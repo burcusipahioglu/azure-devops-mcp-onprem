@@ -1,0 +1,9 @@
+{
+  "servers": {
+    "azure-devops": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["build/index.js"]
+    }
+  }
+}

@@ -1,0 +1,65 @@
+{
+  "name": "@burcusipahioglu/azure-devops-mcp-onprem",
+  "version": "1.0.0",
+  "description": "MCP server for on-premises Azure DevOps Server (TFS). Covers Work Items, Git, TFVC (shelvesets, changesets, labels), Pipelines, Wiki, and Test Plans. Bridges Claude, GitHub Copilot, Cursor, Antigravity, and other AI assistants.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "azure-devops-mcp-onprem": "./dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "keywords": [
+    "mcp",
+    "mcp-server",
+    "model-context-protocol",
+    "azure-devops",
+    "azure-devops-server",
+    "tfs",
+    "tfvc",
+    "shelveset",
+    "on-premises",
+    "claude",
+    "copilot",
+    "cursor",
+    "antigravity"
+  ],
+  "author": "Burcu Sipahioglu Gokbulut",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/burcusipahioglu/azure-devops-mcp-onprem"
+  },
+  "bugs": {
+    "url": "https://github.com/burcusipahioglu/azure-devops-mcp-onprem/issues"
+  },
+  "homepage": "https://github.com/burcusipahioglu/azure-devops-mcp-onprem#readme",
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsc --watch"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "azure-devops-node-api": "^14.1.0",
+    "dotenv": "^17.4.1",
+    "zod": "^3.25.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.7.0"
+  }
+}
