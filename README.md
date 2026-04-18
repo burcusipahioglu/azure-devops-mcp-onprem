@@ -789,3 +789,7 @@ npm start
 ```
 
 ## License
+
+Released under the [MIT License](LICENSE). Copyright (c) 2026 Burcu Sipahioglu Gokbulut.
+
+You are free to use, modify, and redistribute this project for any purpose — commercial or personal — provided the copyright notice and license text are preserved. See the [LICENSE](LICENSE) file for the full text.
