@@ -242,7 +242,7 @@ icacls "%USERPROFILE%\.azure-devops-mcp.env" /inheritance:r /grant:r "%USERNAME%
 #### VS Code — one-click install
 
 <p align="center">
-  <a href="https://insiders.vscode.dev/redirect/mcp/install?name=azure-devops-mcp-onprem&config=%7B%22type%22%3A%22stdio%22%2C%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22%40burcusipahioglu%2Fazure-devops-mcp-onprem%22%5D%2C%22env%22%3A%7B%22AZURE_DEVOPS_ENV_FILE%22%3A%22%24%7BuserHome%7D%2F.azure-devops-mcp.env%22%7D%7D">
+  <a href="https://insiders.vscode.dev/redirect/mcp/install?name=azure-devops-mcp-onprem&config=%7B%22type%22%3A%22stdio%22%2C%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22%40burcusg%2Fazure-devops-mcp-onprem%22%5D%2C%22env%22%3A%7B%22AZURE_DEVOPS_ENV_FILE%22%3A%22%24%7BuserHome%7D%2F.azure-devops-mcp.env%22%7D%7D">
     <img src="https://img.shields.io/badge/%E2%96%B6%20ONE--CLICK%20INSTALL%20IN%20VS%20CODE-007ACC?style=for-the-badge&logo=visualstudiocode&logoColor=white&labelColor=1A1A2E&logoWidth=30" alt="One-click install in VS Code" height="55">
   </a>
 </p>
@@ -252,7 +252,7 @@ Click → VS Code opens with the config pre-filled → confirm. Works for VS Cod
 #### Claude Code (CLI) — one command
 
 ```bash
-claude mcp add azure-devops -- npx -y @burcusipahioglu/azure-devops-mcp-onprem --env AZURE_DEVOPS_ENV_FILE=$HOME/.azure-devops-mcp.env
+claude mcp add azure-devops -- npx -y @burcusg/azure-devops-mcp-onprem --env AZURE_DEVOPS_ENV_FILE=$HOME/.azure-devops-mcp.env
 ```
 
 No JSON editing required.
@@ -266,7 +266,7 @@ Edit your client's MCP config file (Claude Desktop: `%APPDATA%\Claude\claude_des
   "mcpServers": {
     "azure-devops": {
       "command": "npx",
-      "args": ["-y", "@burcusipahioglu/azure-devops-mcp-onprem"],
+      "args": ["-y", "@burcusg/azure-devops-mcp-onprem"],
       "env": {
         "AZURE_DEVOPS_ENV_FILE": "C:\\Users\\you\\.azure-devops-mcp.env"
       }

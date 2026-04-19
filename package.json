@@ -1,12 +1,12 @@
 {
-  "name": "@burcusipahioglu/azure-devops-mcp-onprem",
+  "name": "@burcusg/azure-devops-mcp-onprem",
   "version": "1.0.0",
   "description": "MCP server for on-premises Azure DevOps Server (TFS). Covers Work Items, Git, TFVC (shelvesets, changesets, labels), Pipelines, Wiki, and Test Plans. Bridges Claude, GitHub Copilot, Cursor, Antigravity, and other AI assistants.",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "bin": {
-    "azure-devops-mcp-onprem": "./dist/index.js"
+    "azure-devops-mcp-onprem": "dist/index.js"
   },
   "files": [
     "dist",
