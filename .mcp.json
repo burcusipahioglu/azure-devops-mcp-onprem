@@ -3,7 +3,10 @@
     "azure-devops": {
       "type": "stdio",
       "command": "node",
-      "args": ["build/index.js"]
+      "args": ["dist/index.js"],
+      "env": {
+        "AZURE_DEVOPS_ENV_FILE": "C:\\Users\\you\\.azure-devops-mcp.env"
+      }
     }
   }
 }
