@@ -31,7 +31,7 @@ const envLoadResult = loadEnv({ path: envPath });
 const envFileLoaded = !envLoadResult.error && existsSync(envPath);
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { loadConfig } from "./config.js";
+import { ALL_DOMAINS, DomainName, loadConfig } from "./config.js";
 import { AzureDevOpsConnectionProvider } from "./connection/provider.js";
 import { registerWorkItemTools } from "./tools/work-items.js";
 import { registerGitTools } from "./tools/git.js";
@@ -48,23 +48,26 @@ const provider = new AzureDevOpsConnectionProvider(config);
 
 const server = new McpServer({
   name: config.serverName,
-  version: "1.0.0",
+  version: "1.1.0",
 });
 
-const toolModules = [
-  registerWorkItemTools,
-  registerWorkItemAdvancedTools,
-  registerGitTools,
-  registerGitAdvancedTools,
-  registerPipelineTools,
-  registerTfvcTools,
-  registerConvenienceTools,
-  registerTestManagementTools,
-  registerWikiTools,
-];
+type ToolRegister = (server: McpServer, provider: AzureDevOpsConnectionProvider) => void;
 
-for (const register of toolModules) {
-  register(server, provider);
+const domainModules: Record<DomainName, ToolRegister[]> = {
+  work_items: [registerWorkItemTools, registerWorkItemAdvancedTools],
+  git: [registerGitTools, registerGitAdvancedTools],
+  tfvc: [registerTfvcTools],
+  pipelines: [registerPipelineTools],
+  wiki: [registerWikiTools],
+  test_plans: [registerTestManagementTools],
+  convenience: [registerConvenienceTools],
+};
+
+for (const domain of ALL_DOMAINS) {
+  if (!config.enabledDomains.has(domain)) continue;
+  for (const register of domainModules[domain]) {
+    register(server, provider);
+  }
 }
 
 async function main() {
@@ -75,14 +78,24 @@ async function main() {
     ? `env file: ${envPath}`
     : "env file: (none — using process env only)";
 
+  const enabled = ALL_DOMAINS.filter((d) => config.enabledDomains.has(d));
+  const disabled = ALL_DOMAINS.filter((d) => !config.enabledDomains.has(d));
+  const domainLine = `Enabled domains (${enabled.length}/${ALL_DOMAINS.length}): ${enabled.join(", ")}`;
+  const disabledLine =
+    disabled.length > 0 ? `Disabled domains: ${disabled.join(", ")}` : null;
+
   try {
     const user = await provider.resolveCurrentUser();
     console.error(`Azure DevOps MCP Server "${config.serverName}" running on stdio`);
     console.error(envSource);
+    console.error(domainLine);
+    if (disabledLine) console.error(disabledLine);
     console.error(`Authenticated as: ${user.displayName} (${user.uniqueName})`);
   } catch {
     console.error(`Azure DevOps MCP Server "${config.serverName}" running on stdio`);
     console.error(envSource);
+    console.error(domainLine);
+    if (disabledLine) console.error(disabledLine);
     console.error("Warning: Could not resolve current user identity");
   }
 }

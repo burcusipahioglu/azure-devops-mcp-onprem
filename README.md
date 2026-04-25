@@ -166,6 +166,32 @@ mindmap
       search_wiki_pages
 ```
 
+### Restrict which tool domains load
+
+The 48 tools are grouped into 7 domains. By default all 7 load. If you only need a subset, set `AZURE_DEVOPS_ENABLED_DOMAINS` in your `.env` to a comma-separated list — disabled domains' tools are not registered, which trims the AI client's tool list and reduces tool-selection confusion.
+
+Valid domains: `work_items`, `git`, `tfvc`, `pipelines`, `wiki`, `test_plans`, `convenience`.
+
+Role-based examples:
+
+| Role | `AZURE_DEVOPS_ENABLED_DOMAINS` |
+|------|--------------------------------|
+| Project manager | `work_items,convenience,wiki` |
+| Developer (TFVC) | `work_items,tfvc,pipelines,convenience` |
+| Developer (Git) | `work_items,git,pipelines,convenience` |
+| QA / tester | `work_items,test_plans,git` |
+| DevOps / release | `work_items,pipelines,git,tfvc` |
+| Read-only / analyst | `work_items,wiki,convenience` |
+
+Unknown domain names cause the server to fail at startup, so typos surface immediately rather than silently dropping tools. Leave the variable unset (or empty) to load all 7 domains.
+
+The startup log reports which domains were enabled and disabled, e.g.:
+
+```
+Enabled domains (4/7): work_items, tfvc, pipelines, convenience
+Disabled domains: git, wiki, test_plans
+```
+
 ## Privacy & Data Flow
 
 **This server runs entirely locally.** TFS API calls go directly from your machine to your Azure DevOps Server over your network. No data — work items, code, PATs, anything — is sent to the package author or any third-party service.

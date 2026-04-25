@@ -1,9 +1,44 @@
+export const ALL_DOMAINS = [
+  "work_items",
+  "git",
+  "tfvc",
+  "pipelines",
+  "wiki",
+  "test_plans",
+  "convenience",
+] as const;
+
+export type DomainName = (typeof ALL_DOMAINS)[number];
+
 export interface Config {
   orgUrl: string;
   pat: string;
   project: string;
   sslIgnore: boolean;
   serverName: string;
+  enabledDomains: Set<DomainName>;
+}
+
+function parseEnabledDomains(raw: string | undefined): Set<DomainName> {
+  if (!raw || raw.trim() === "") {
+    return new Set(ALL_DOMAINS);
+  }
+  const requested = raw
+    .split(",")
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean);
+  const validSet = new Set<string>(ALL_DOMAINS);
+  const unknown = requested.filter((d) => !validSet.has(d));
+  if (unknown.length > 0) {
+    throw new Error(
+      `Unknown domain(s) in AZURE_DEVOPS_ENABLED_DOMAINS: ${unknown.join(", ")}. ` +
+        `Valid domains: ${ALL_DOMAINS.join(", ")}`
+    );
+  }
+  if (requested.length === 0) {
+    return new Set(ALL_DOMAINS);
+  }
+  return new Set(requested as DomainName[]);
 }
 
 /**
@@ -67,5 +102,8 @@ export function loadConfig(): Config {
     sslIgnore:
       process.env.AZURE_DEVOPS_SSL_IGNORE?.toLowerCase() === "true",
     serverName,
+    enabledDomains: parseEnabledDomains(
+      process.env.AZURE_DEVOPS_ENABLED_DOMAINS
+    ),
   };
 }
