@@ -27,7 +27,9 @@ function resolveEnvPath(): string {
 }
 
 const envPath = resolveEnvPath();
-const envLoadResult = loadEnv({ path: envPath });
+// quiet: suppress dotenv's stdout banner ("◇ injected env ...") which
+// otherwise corrupts the MCP stdio JSON-RPC channel.
+const envLoadResult = loadEnv({ path: envPath, quiet: true });
 const envFileLoaded = !envLoadResult.error && existsSync(envPath);
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
