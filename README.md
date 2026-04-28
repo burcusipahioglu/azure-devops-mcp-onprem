@@ -44,7 +44,7 @@ Supports both Git and TFVC, runs locally without external dependencies, and can 
 | | Feature | Details |
 |---|---------|---------|
 | **On-Premises** | Azure DevOps Server 2022.2 | Targets self-hosted TFS / Azure DevOps Server — PAT auth, self-signed SSL support |
-| **TFVC Support** | Shelvesets, changesets, labels | 10 TFVC tools covering legacy version control workflows |
+| **TFVC Support** | Shelvesets, changesets, labels | 11 TFVC tools covering legacy version control workflows |
 | **48 Tools** | 7 domains | Work Items, Git, TFVC, Pipelines, Wiki, Test Plans, Convenience (selectively loadable via `AZURE_DEVOPS_ENABLED_DOMAINS`) |
 | **Multi-Instance** | Multiple TFS servers | `AZURE_DEVOPS_PROFILE` loads `.env.<name>` — run against several TFS instances simultaneously |
 | **`@me` Token** | Current-user shortcut | `owner` / `author` / `assignedTo` accept `@me` — resolved per tenant, stateless for multi-agent setups |
@@ -82,9 +82,9 @@ graph TD
 
     MCP --> WI["Work Items — 8 tools"]
     MCP --> GIT["Git — 9 tools"]
-    MCP --> TFVC["TFVC — 10 tools"]
+    MCP --> TFVC["TFVC — 11 tools"]
     MCP --> PIPE["Pipelines — 5 tools"]
-    MCP --> CONV["Convenience — 5 tools"]
+    MCP --> CONV["Convenience — 4 tools"]
     MCP --> TEST["Test Mgmt — 6 tools"]
     MCP --> WIKI["Wiki — 5 tools"]
 
@@ -141,7 +141,7 @@ mindmap
       list_commits
       get_commit_changes
       compare_branches
-    **TFVC — 10**
+    **TFVC — 11**
       tfvc_browse
       tfvc_get_file
       tfvc_get_changeset
@@ -152,17 +152,17 @@ mindmap
       tfvc_list_shelvesets
       tfvc_get_shelveset
       tfvc_list_labels
+      get_work_item_changesets
     **Pipelines — 5**
       list_build_definitions
       queue_build
       get_build
       list_builds
       list_releases
-    **Convenience — 5**
+    **Convenience — 4**
       get_my_sprint_items
       search_work_items_by_tag
       get_work_item_statistics
-      get_work_item_changesets
       get_current_user
     **Test Management — 6**
       list_test_plans
@@ -646,8 +646,8 @@ src/
     git.ts                   6 tools — repos, branches, file content, pull requests
     git-advanced.ts          3 tools — commit history, commit changes, branch comparison
     pipelines.ts             5 tools — build definitions, builds, releases
-    tfvc.ts                  10 tools — browse, files, changesets, shelvesets, labels, branches
-    convenience.ts           5 tools — sprint items, tag search, statistics, changeset inspector, current user
+    tfvc.ts                  11 tools — browse, files, changesets, shelvesets, labels, branches, work-item changesets
+    convenience.ts           4 tools — sprint items, tag search, statistics, current user
     test-management.ts       6 tools — test plans, suites, cases, runs, results
     wiki.ts                  5 tools — list wikis, pages, browse, stats, search
 ```
@@ -691,7 +691,7 @@ src/
 | `get_commit_changes` | File changes in a commit | `repositoryId`, `commitId` |
 | `compare_branches` | Branch diff (ahead/behind + changed files) | `repositoryId`, `baseBranch`, `targetBranch` |
 
-### TFVC (10 tools)
+### TFVC (11 tools)
 
 | Tool | Description | Key Parameters |
 |------|-------------|----------------|
@@ -705,6 +705,7 @@ src/
 | `tfvc_list_shelvesets` | List shelvesets (sorted newest-first) | `owner` (accepts `@me`), `top` |
 | `tfvc_get_shelveset` | Get shelveset details + changes | `shelvesetId`, `includeWorkItems` |
 | `tfvc_list_labels` | List TFVC labels | `name`, `owner` (accepts `@me`), `top` |
+| `get_work_item_changesets` | Get all TFVC changesets linked to a work item (with file changes) | `workItemId`, `includeFileContent`, `maxFiles` |
 
 ### Pipelines (5 tools)
 
@@ -716,14 +717,13 @@ src/
 | `list_builds` | List recent builds | `definitionId`, `status`, `top` |
 | `list_releases` | List releases | `definitionId`, `top` |
 
-### Convenience (5 tools)
+### Convenience (4 tools)
 
 | Tool | Description | Key Parameters |
 |------|-------------|----------------|
 | `get_my_sprint_items` | Get your current sprint items | `workItemType`, `states` |
 | `search_work_items_by_tag` | Search work items by tags | `tags`, `workItemType`, `state`, `top` |
 | `get_work_item_statistics` | Work item counts by area path (handles 20K+ items) | `workItemTypes`, `days`, `states`, `areaPathPrefix`, `areaPathContains`, `groupByDepth`, `topAreas` |
-| `get_work_item_changesets` | Get all changesets linked to a work item | `workItemId`, `includeFileContent`, `maxFiles` |
 | `get_current_user` | Identity of the authenticated PAT owner (displayName, id, uniqueName) | — |
 
 ### Test Management (6 tools)
@@ -810,7 +810,7 @@ Technically works — point `AZURE_DEVOPS_ORG_URL` at `https://dev.azure.com/<yo
 
 However, this project is **not positioned for cloud use**:
 
-- **TFVC doesn't exist on cloud** — Microsoft disabled new TFVC repos for cloud organizations created after February 2017. The 10 TFVC tools are unused on cloud.
+- **TFVC doesn't exist on cloud** — Microsoft disabled new TFVC repos for cloud organizations created after February 2017. The 11 TFVC tools are unused on cloud.
 - **PAT-only auth.** Many cloud tenants disable PAT in favor of Microsoft Entra ID OAuth. This server doesn't support Entra yet.
 - **Microsoft ships [`@azure-devops/mcp`](https://github.com/microsoft/azure-devops-mcp) for cloud** — officially maintained, Entra ID supported, broader tool coverage (code search, artifact download, PR threads, iteration/capacity).
 

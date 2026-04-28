@@ -1,12 +1,11 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { WorkItemExpand } from "azure-devops-node-api/interfaces/WorkItemTrackingInterfaces.js";
 import type { IConnectionProvider } from "../connection/provider.js";
-import { withErrorHandling, jsonResponse, textResponse, extractErrorMessage } from "../utils/tool-response.js";
+import { withErrorHandling, jsonResponse, textResponse } from "../utils/tool-response.js";
 import { sanitizeWiqlValue } from "../utils/wiql.js";
 import { topParam } from "../utils/schemas.js";
 import { extractDisplayValue, batchGetWorkItems } from "../utils/work-item-helpers.js";
-import { LARGE_RESULT_HINT_THRESHOLD, WIQL_STATISTICS_TOP, FILE_CONTENT_TRUNCATION_LIMIT } from "../constants.js";
+import { LARGE_RESULT_HINT_THRESHOLD, WIQL_STATISTICS_TOP } from "../constants.js";
 
 // --- Helper types ---
 
@@ -136,25 +135,6 @@ function buildSprintWiql(workItemType?: string, states?: string[]): string {
 
   wiql += ` ORDER BY [Microsoft.VSTS.Common.Priority] ASC, [System.ChangedDate] DESC`;
   return wiql;
-}
-
-// Helper: Extract changeset IDs from work item relations
-function extractChangesetIds(relations: unknown[] | undefined): number[] {
-  if (!relations) return [];
-  const ids: number[] = [];
-  for (const rel of relations) {
-    const relObj = rel as Record<string, unknown>;
-    if (
-      relObj.rel === "ArtifactLink" &&
-      (relObj.url as string | undefined)?.includes("vstfs:///VersionControl/Changeset/")
-    ) {
-      const match = (relObj.url as string).match(/Changeset\/(\d+)/);
-      if (match) {
-        ids.push(parseInt(match[1], 10));
-      }
-    }
-  }
-  return ids;
 }
 
 // --- Tool registrations ---
@@ -488,172 +468,6 @@ export function registerConvenienceTools(server: McpServer, provider: IConnectio
         if (hints.length > 0) {
           result.narrowingHints = hints;
         }
-
-        return jsonResponse(result);
-      })
-  );
-
-  server.registerTool(
-    "get_work_item_changesets",
-    {
-      description: "Get all TFVC changesets linked to a work item, including file changes and changeset details. Useful for reviewing what code changes were made for a bug fix or feature.",
-      inputSchema: {
-        workItemId: z
-          .number()
-          .describe("Work item ID (Bug, Task, User Story, etc.)"),
-        includeFileContent: z
-          .boolean()
-          .optional()
-          .default(false)
-          .describe(
-            "Also fetch the content of changed files (can be large, use with care)"
-          ),
-        maxFiles: z
-          .number()
-          .optional()
-          .default(20)
-          .describe(
-            "Maximum number of changed files to include per changeset"
-          ),
-      },
-    },
-    ({ workItemId, includeFileContent, maxFiles }) =>
-      withErrorHandling(async () => {
-        const { api: witApi, project } = await provider.getWorkItemContext();
-        const { api: tfvcApi } = await provider.getTfvcContext();
-
-        const workItem = await witApi.getWorkItem(
-          workItemId,
-          undefined,
-          undefined,
-          WorkItemExpand.Relations,
-          project
-        );
-
-        if (!workItem) {
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: `Work item ${workItemId} not found.`,
-              },
-            ],
-          };
-        }
-
-        const changesetIds = extractChangesetIds(workItem.relations);
-
-        if (changesetIds.length === 0) {
-          return jsonResponse({
-            workItemId,
-            title: workItem.fields?.["System.Title"],
-            type: workItem.fields?.["System.WorkItemType"],
-            message:
-              "No TFVC changesets linked to this work item.",
-            hint: "Changesets may be linked via 'Fixed in Changeset' or associated changeset links.",
-          });
-        }
-
-        const changesetResults: Record<string, unknown>[] = [];
-
-        for (const changesetId of changesetIds) {
-
-          try {
-            const changeset = await tfvcApi.getChangeset(
-              changesetId,
-              project,
-              maxFiles,
-              true,
-              true
-            );
-
-            const changes = await tfvcApi.getChangesetChanges(
-              changesetId,
-              undefined,
-              maxFiles
-            );
-
-            const fileChanges = (changes || []).map((change) => ({
-              changeType: change.changeType,
-              path: change.item?.path,
-              version: change.item?.version,
-            }));
-
-            let fileContents: { path: string; content: string }[] | undefined;
-            if (includeFileContent && fileChanges.length > 0) {
-              fileContents = [];
-              for (const fc of fileChanges.slice(0, maxFiles)) {
-                if (!fc.path) continue;
-                try {
-                  const stream = await tfvcApi.getItemContent(
-                    fc.path,
-                    project,
-                    undefined,
-                    undefined,
-                    undefined,
-                    undefined,
-                    {
-                      version: String(changesetId),
-                      versionType: 1, // Changeset
-                    }
-                  );
-                  if (stream) {
-                    const chunks: Buffer[] = [];
-                    for await (const chunk of stream) {
-                      chunks.push(Buffer.from(chunk));
-                    }
-                    const content = Buffer.concat(chunks).toString("utf-8");
-                    fileContents.push({
-                      path: fc.path,
-                      content:
-                        content.length > FILE_CONTENT_TRUNCATION_LIMIT
-                          ? content.substring(0, FILE_CONTENT_TRUNCATION_LIMIT) +
-                            "\n... [truncated, file too large]"
-                          : content,
-                    });
-                  }
-                } catch (err: unknown) {
-                  fileContents.push({
-                    path: fc.path,
-                    content: `[Could not retrieve file content: ${extractErrorMessage(err)}]`,
-                  });
-                }
-              }
-            }
-
-            changesetResults.push({
-              changesetId: changeset.changesetId,
-              author: changeset.author?.displayName,
-              createdDate: changeset.createdDate,
-              comment: changeset.comment,
-              checkinNotes: changeset.checkinNotes,
-              fileChanges,
-              ...(fileContents ? { fileContents } : {}),
-              associatedWorkItems: changeset.workItems?.map((wi) => ({
-                id: wi.id,
-                title: wi.title,
-                url: wi.url,
-              })),
-            });
-          } catch (err: unknown) {
-            const msg = extractErrorMessage(err);
-            changesetResults.push({
-              changesetId,
-              error: `Failed to fetch changeset: ${msg}`,
-            });
-          }
-        }
-
-        const result = {
-          workItem: {
-            id: workItem.id,
-            type: workItem.fields?.["System.WorkItemType"],
-            title: workItem.fields?.["System.Title"],
-            state: workItem.fields?.["System.State"],
-          },
-          totalChangesets: changesetResults.length,
-          changesets: changesetResults,
-        };
 
         return jsonResponse(result);
       })
