@@ -9,7 +9,11 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Tools](https://img.shields.io/badge/Tools-48-green)](https://github.com/burcusipahioglu/azure-devops-mcp-onprem#tool-reference)
 
-**MCP server for on-premises Azure DevOps Server (TFS). Covers Work Items, Git, TFVC (including shelvesets, changesets, labels), Pipelines, Wiki, and Test Plans. Profile-based multi-tenant config, PAT authentication. Bridges Claude, GitHub Copilot, Cursor, Antigravity, and other AI assistants.**
+This MCP server enables AI assistants to work with on-premises Azure DevOps Server.
+
+→ Query work items, repositories, and pipelines using natural language
+→ Runs locally without requiring a cloud proxy
+→ Supports both Git and TFVC workflows (including shelvesets, changesets, and labels)
 
 [Quick Start](#quick-start-for-individuals) · [Enterprise Setup](#enterprise-setup-for-teams) · [Privacy](#privacy--data-flow) · [Tool Reference](#tool-reference) · [Multi-Instance](#multi-instance-setup) · [Security](#security)
 
@@ -17,29 +21,34 @@
 
 ---
 
-> 🔒 **Runs entirely locally. Your data never leaves your machine — no telemetry, no cloud proxy.** [See details ↓](#privacy--data-flow)
+> Runs locally with no telemetry or cloud proxy. [Privacy details ↓](#privacy--data-flow)
 
 ---
 
-### Why?
-
-AI assistants like GitHub Copilot and Claude are powerful — but they can't see your backlog, your branches, or your build status. This MCP server gives them direct, read-write access to your on-premises Azure DevOps Server, so you can ask things like:
+### Example questions
 
 > *"Show me all active bugs assigned to me in this sprint"*
-> *"Create a PR from feature/login to develop with this description"*
 > *"What changed in changeset 12345?"*
+> *"Create a PR from feature/login to develop"*
 > *"Trigger the nightly build on the release branch"*
+> *"List my latest shelvesets"*
+
+### Designed for Enterprise
+
+Built for on-prem Azure DevOps (TFS) environments.
+
+Supports both Git and TFVC, runs locally without external dependencies, and can be configured for multiple teams or collections.
 
 ### Key Features
 
 | | Feature | Details |
 |---|---------|---------|
-| **On-Prem First** | Azure DevOps Server 2022.2 | Built for self-hosted TFS where cloud-oriented MCPs don't reach — PAT auth, self-signed SSL support |
-| **TFVC Support** | Shelvesets, changesets, labels | 10 TFVC tools for legacy version control workflows that cloud-era tools don't cover |
-| **48 Tools** | 9 domains | Work Items, Git, TFVC, Pipelines, Wiki, Test Plans + convenience + advanced helpers |
+| **On-Premises** | Azure DevOps Server 2022.2 | Targets self-hosted TFS / Azure DevOps Server — PAT auth, self-signed SSL support |
+| **TFVC Support** | Shelvesets, changesets, labels | 10 TFVC tools covering legacy version control workflows |
+| **48 Tools** | 7 domains | Work Items, Git, TFVC, Pipelines, Wiki, Test Plans, Convenience (selectively loadable via `AZURE_DEVOPS_ENABLED_DOMAINS`) |
 | **Multi-Instance** | Multiple TFS servers | `AZURE_DEVOPS_PROFILE` loads `.env.<name>` — run against several TFS instances simultaneously |
 | **`@me` Token** | Current-user shortcut | `owner` / `author` / `assignedTo` accept `@me` — resolved per tenant, stateless for multi-agent setups |
-| **Multi-Client** | Works everywhere | Claude Code/Desktop, GitHub Copilot, Cursor, Codex CLI, Antigravity, and any MCP-compatible client |
+| **Multi-Client** | MCP-compatible clients | Tested: Claude Code/Desktop, GitHub Copilot, Cursor, Visual Studio 2022. Should work with any MCP-compatible client (e.g., Codex CLI, Antigravity) |
 | **Safe Writes** | Confirmation required | All mutating tools need explicit user approval; WIQL injection prevention; bounded pagination; scrubbed errors |
 
 ---
@@ -48,7 +57,7 @@ AI assistants like GitHub Copilot and Claude are powerful — but they can't see
 
 ```mermaid
 graph LR
-    A["🤖 AI Assistants"] -->|MCP Protocol| B["⚙️ MCP Server<br/>48 Tools · 9 Domains"]
+    A["🤖 AI Assistants"] -->|MCP Protocol| B["⚙️ MCP Server<br/>48 Tools · 7 Domains"]
     B -->|REST API| C["☁️ Azure DevOps<br/>On-Prem or Cloud"]
 
     style A fill:#1e3a5f,stroke:#4a90d9,color:#fff
@@ -64,8 +73,10 @@ graph TD
     CLI["Copilot CLI"] --> MCP
     CC["Claude Code"] --> MCP
     CD["Claude Desktop"] --> MCP
-    CDX["Codex CLI"] --> MCP
-    AG["Antigravity"] --> MCP
+    VS["Visual Studio 2022"] --> MCP
+    CUR["Cursor"] --> MCP
+    CDX["Codex CLI"] -.-> MCP
+    AG["Antigravity"] -.-> MCP
 
     MCP["MCP Server — Node.js + TypeScript"]
 
@@ -91,8 +102,10 @@ graph TD
     style CLI fill:#1e3a5f,stroke:#4a90d9,color:#fff
     style CC fill:#1e3a5f,stroke:#4a90d9,color:#fff
     style CD fill:#1e3a5f,stroke:#4a90d9,color:#fff
-    style CDX fill:#1e3a5f,stroke:#4a90d9,color:#fff
-    style AG fill:#1e3a5f,stroke:#4a90d9,color:#fff
+    style VS fill:#1e3a5f,stroke:#4a90d9,color:#fff
+    style CUR fill:#1e3a5f,stroke:#4a90d9,color:#fff
+    style CDX fill:#1e3a5f,stroke:#4a90d9,color:#fff,stroke-dasharray: 5 5
+    style AG fill:#1e3a5f,stroke:#4a90d9,color:#fff,stroke-dasharray: 5 5
     style MCP fill:#1a1a2e,stroke:#8B5CF6,color:#fff
     style WI fill:#16213e,stroke:#4a90d9,color:#fff
     style GIT fill:#16213e,stroke:#4a90d9,color:#fff
@@ -251,6 +264,11 @@ AZURE_DEVOPS_ORG_URL=https://your-tfs-server/tfs/YourCollection
 AZURE_DEVOPS_PROJECT=YourProjectName
 AZURE_DEVOPS_PAT=your_pat_token
 # AZURE_DEVOPS_SSL_IGNORE=true   # uncomment for self-signed certs
+
+# Optional: load only the tool domains you need (smaller AI tool list,
+# fewer mis-selections). Leave unset to load all 7 domains.
+# Valid: work_items, git, tfvc, pipelines, wiki, test_plans, convenience
+# AZURE_DEVOPS_ENABLED_DOMAINS=work_items,tfvc,pipelines,convenience
 ```
 
 Lock it so only you can read it:
@@ -345,6 +363,10 @@ AZURE_DEVOPS_PROJECT=YourProjectName
 AZURE_DEVOPS_PAT=your_pat_token
 # AZURE_DEVOPS_SERVER_NAME=CustomDisplayName   # optional, auto-derived from URL
 # AZURE_DEVOPS_SSL_IGNORE=true                 # only for self-signed certs
+
+# Optional: restrict tool domains (see "Restrict which tool domains load" above).
+# Leave unset to load all 7 domains.
+# AZURE_DEVOPS_ENABLED_DOMAINS=work_items,tfvc,pipelines,convenience
 ```
 
 **Server name auto-detection** (displayed by the AI client):
@@ -539,6 +561,8 @@ AZURE_DEVOPS_ORG_URL=https://tfs-1.example.com/tfs/ProductACollection
 AZURE_DEVOPS_PROJECT=Product A
 AZURE_DEVOPS_PAT=<pat-for-product-a>
 AZURE_DEVOPS_SSL_IGNORE=false
+# Per-profile domain restriction — e.g. Product A only needs Git + work items
+# AZURE_DEVOPS_ENABLED_DOMAINS=work_items,git,pipelines,convenience
 ```
 
 `mcp.json` — secrets-free, safe to commit:
@@ -603,15 +627,19 @@ If your .env files live outside the project directory (e.g. a shared secrets fol
 
 ```
 src/
-  config.ts                  Config interface + loadConfig() — reads env vars once at startup
-  connection.ts              Azure DevOps connection manager + API context helpers
-  index.ts                   Entry point — loads config, inits connection, registers 9 tool modules
+  config.ts                  Config interface + loadConfig() — reads env vars, validates AZURE_DEVOPS_ENABLED_DOMAINS
+  constants.ts               Batch sizes, truncation limits, pagination thresholds
+  index.ts                   Entry point — resolves env file, loads config, registers tool modules per enabled domain
+  connection/
+    provider.ts              IConnectionProvider + AzureDevOpsConnectionProvider — PAT auth, lazy WebApi connection, cached user identity
+    context-types.ts         Per-API context types (WorkItemContext, GitContext, TfvcContext, BuildContext, ReleaseContext, TestContext, TestPlanContext, WikiContext)
   utils/
     tool-response.ts         withErrorHandling() — centralized error handling + error sanitization
     wiql.ts                  sanitizeWiqlValue() — WIQL injection prevention
     schemas.ts               topParam() / skipParam() — shared input validation schemas
     work-item-helpers.ts     extractDisplayValue() / batchGetWorkItems() — shared helpers
     me-resolver.ts           resolveMe() — expands '@me' token to current user's display name
+    patch-document.ts        normalizeFieldPath() / buildUpdatePatchDocument() — JsonPatch helpers for work-item updates
   tools/
     work-items.ts            6 tools — WIQL queries, CRUD, comments, links
     work-items-advanced.ts   2 tools — change history, bulk update with before/after report
@@ -782,7 +810,7 @@ Technically works — point `AZURE_DEVOPS_ORG_URL` at `https://dev.azure.com/<yo
 
 However, this project is **not positioned for cloud use**:
 
-- **TFVC doesn't exist on cloud** — Microsoft disabled new TFVC repos for cloud organizations created after February 2017. The 10 TFVC tools (the main differentiator here) are dead weight on cloud.
+- **TFVC doesn't exist on cloud** — Microsoft disabled new TFVC repos for cloud organizations created after February 2017. The 10 TFVC tools are unused on cloud.
 - **PAT-only auth.** Many cloud tenants disable PAT in favor of Microsoft Entra ID OAuth. This server doesn't support Entra yet.
 - **Microsoft ships [`@azure-devops/mcp`](https://github.com/microsoft/azure-devops-mcp) for cloud** — officially maintained, Entra ID supported, broader tool coverage (code search, artifact download, PR threads, iteration/capacity).
 
@@ -790,7 +818,7 @@ However, this project is **not positioned for cloud use**:
 
 ## Security
 
-- **Local-only execution.** **No data ever leaves your machine except to your own Azure DevOps Server and your chosen AI assistant.** There is no telemetry, analytics, or cloud proxy — see [Privacy & Data Flow](#privacy--data-flow) for the full data-destination table.
+- **Local-only execution:** Data only leaves the machine to reach your configured Azure DevOps Server and your chosen AI assistant. No telemetry, analytics, or cloud proxy — see [Privacy & Data Flow](#privacy--data-flow) for the full data-destination table.
 - **PAT storage:** Credentials live in gitignored `.env` / `.env.<profile>` files — **never** in `mcp.json` / client configs. See [Secrets hygiene](#secrets-hygiene).
 - **WIQL injection prevention:** All user-supplied values are sanitized via `sanitizeWiqlValue()` before WIQL interpolation.
 - **Error message sanitization:** Internal paths, URLs, and stack traces are scrubbed before responses reach the client.
