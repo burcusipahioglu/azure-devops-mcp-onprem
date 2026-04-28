@@ -255,6 +255,8 @@ Grant only what you need. Omit scopes for domains you don't plan to use — the 
 
 No cloning, no build — run straight from npm. Takes about 2 minutes end-to-end.
 
+> **No public npm access?** If your network or organization blocks the public npm registry, skip this section and follow [Enterprise Setup](#enterprise-setup-for-teams) instead — it builds from source and only needs `npm install` (which can use an internal mirror if configured).
+
 **1. Get a PAT** from your Azure DevOps Server with the scopes in [Prerequisites](#prerequisites).
 
 **2. Create a credential file** somewhere under your home folder — e.g. `~/.azure-devops-mcp.env` (Linux/macOS) or `C:\Users\you\.azure-devops-mcp.env` (Windows):
