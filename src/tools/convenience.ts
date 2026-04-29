@@ -102,7 +102,7 @@ function buildNarrowingHints(
 
   if (!params.areaPathPrefix && !params.areaPathContains) {
     hints.push(
-      `Results contain ${totalProcessed} items across ${totalAreas} areas. Consider narrowing with 'areaPathPrefix' (exact hierarchy) or 'areaPathContains' (keyword search, e.g. 'S7-1500', 'Drives', 'HMI').`
+      `Results contain ${totalProcessed} items across ${totalAreas} areas. Consider narrowing with 'areaPathPrefix' (exact hierarchy) or 'areaPathContains' (keyword search by area path keyword).`
     );
   }
   if (!params.tags || params.tags.length === 0) {
@@ -354,7 +354,7 @@ export function registerConvenienceTools(server: McpServer, provider: IConnectio
           .string()
           .optional()
           .describe(
-            "Filter by keyword anywhere in Area Path, e.g. 'S7-1500' or 'Drives'. Useful when you don't know the exact path but know the device family or component name."
+            "Filter by keyword anywhere in Area Path. Useful when you don't know the exact path but know part of the area name."
           ),
         groupByDepth: z
           .number()
@@ -367,7 +367,7 @@ export function registerConvenienceTools(server: McpServer, provider: IConnectio
           .array(z.string())
           .optional()
           .describe(
-            "Filter by tags, e.g. ['S7-1500', 'Performance']. Items matching ANY of these tags will be included."
+            "Filter by tags. Items matching ANY of these tags will be included."
           ),
         iterationPath: z
           .string()

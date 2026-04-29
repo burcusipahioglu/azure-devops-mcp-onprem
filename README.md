@@ -353,6 +353,12 @@ npm run build
 
 Copy the template:
 
+**Windows:**
+```cmd
+copy .env.example .env
+```
+
+**macOS / Linux:**
 ```bash
 cp .env.example .env
 ```
@@ -375,6 +381,15 @@ AZURE_DEVOPS_PAT=your_pat_token
 - `https://dev.azure.com/acme` → `acme`
 - `https://tfs.example.com/tfs/CompanyOrg` → `CompanyOrg`
 - Override with `AZURE_DEVOPS_SERVER_NAME`
+
+**On-Premises configuration notes:**
+
+| Topic | Detail |
+|-------|--------|
+| **Org URL** | Must be the collection URL: `https://server/tfs/{collection}` (no project segment) |
+| **Project name** | Passed separately; spaces are handled by the SDK (`MyProject`, not `MyProject%20Name`) |
+| **SSL** | Set `AZURE_DEVOPS_SSL_IGNORE=true` for self-signed or corporate CA certificates |
+| **API version** | Azure DevOps Server 2022.2 uses REST API ~7.1, compatible with `azure-devops-node-api` v14.x |
 
 **`.env` is gitignored** and will not be committed. For multiple TFS instances, see [Multi-Instance Setup](#multi-instance-setup).
 
@@ -796,15 +811,6 @@ All write operations require explicit user confirmation before execution. The AI
 | `bulk_update_work_items` | **Critical** — full impact summary required | Returns per-item before/after report |
 | `create_pull_request` | Confirm before create | Returns PR ID and details |
 | `queue_build` | Confirm before trigger | Returns build ID and status |
-
-## On-Premises Configuration Notes
-
-| Topic | Detail |
-|-------|--------|
-| **Org URL** | Must be the collection URL: `https://server/tfs/{collection}` (no project segment) |
-| **Project name** | Passed separately; spaces are handled by the SDK (`MyProject`, not `MyProject%20Name`) |
-| **SSL** | Set `AZURE_DEVOPS_SSL_IGNORE=true` for self-signed or corporate CA certificates |
-| **API version** | Azure DevOps Server 2022.2 uses REST API ~7.1, compatible with `azure-devops-node-api` v14.x |
 
 ## Cloud (Azure DevOps Services) support
 
