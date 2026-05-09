@@ -1,0 +1,114 @@
+import { appendFileSync } from "node:fs";
+import type { IConnectionProvider } from "../connection/provider.js";
+import type { ToolResult } from "./tool-response.js";
+
+// Read env vars lazily on each call — module top-level code runs BEFORE
+// index.ts's dotenv `loadEnv()` (ESM hoists imports), so capturing them at
+// load time would miss any value set via .env file.
+function auditPath(): string | undefined {
+  return process.env.AZURE_DEVOPS_AUDIT_LOG;
+}
+function isRedactMode(): boolean {
+  return Boolean(process.env.AZURE_DEVOPS_AUDIT_REDACT);
+}
+
+// Pull the structured payload out of a ToolResult so audit records aren't
+// just a stringified blob. Falls back to the raw text on parse failure.
+function summarizeResult(r: ToolResult): unknown {
+  const text = r.content?.[0]?.text;
+  if (!text) return undefined;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return text;
+  }
+}
+
+// In redact mode, strip all string content but keep numeric IDs, booleans,
+// and the *shape* (top-level keys + nested object keys) so the audit still
+// answers "who touched what fields when" without leaking values. Specific
+// string keys (e.g. "action" labels set by our own code, not user content)
+// can be allow-listed via keepStringKeys.
+function redactPayload(
+  p: unknown,
+  opts?: { keepStringKeys?: readonly string[] }
+): unknown {
+  if (!p || typeof p !== "object" || Array.isArray(p)) return undefined;
+  const keep = new Set(opts?.keepStringKeys ?? []);
+  const obj = p as Record<string, unknown>;
+  const out: Record<string, unknown> = { keys: Object.keys(obj) };
+  for (const [k, v] of Object.entries(obj)) {
+    if (typeof v === "number" || typeof v === "boolean") {
+      out[k] = v;
+    } else if (Array.isArray(v) && v.every((x) => typeof x === "number")) {
+      out[k] = v;
+    } else if (typeof v === "string" && keep.has(k)) {
+      out[k] = v;
+    } else if (v && typeof v === "object" && !Array.isArray(v)) {
+      out[`${k}_keys`] = Object.keys(v as Record<string, unknown>);
+    }
+    // Strings (other than allow-listed), string arrays, and other shapes
+    // are intentionally dropped.
+  }
+  return out;
+}
+
+export async function withAudit(
+  provider: IConnectionProvider,
+  tool: string,
+  input: Record<string, unknown>,
+  work: Promise<ToolResult>
+): Promise<ToolResult> {
+  const path = auditPath();
+  if (!path) return work;
+  const redactMode = isRedactMode();
+
+  const start = Date.now();
+  const result = await work;
+  const ok = !result.isError;
+  const summary = summarizeResult(result);
+
+  let user = "unknown";
+  try {
+    const u = await provider.resolveCurrentUser();
+    user = u.uniqueName || u.displayName || "unknown";
+  } catch {
+    // resolveCurrentUser can fail before the connection warms up; the audit
+    // record is still useful without it.
+  }
+
+  const base = {
+    ts: new Date().toISOString(),
+    tool,
+    user,
+    dryRun: Boolean(input.dryRun),
+    ok,
+    durationMs: Date.now() - start,
+  };
+
+  const record = redactMode
+    ? {
+        ...base,
+        redacted: true,
+        input: redactPayload(input),
+        // "action" is a literal label set by our own response builders
+        // ("UPDATED", "CREATED", "WOULD_*") — forensically valuable, not PII.
+        result: ok ? redactPayload(summary, { keepStringKeys: ["action"] }) : undefined,
+        // Error strings can echo input content; in redact mode keep only the boolean.
+      }
+    : {
+        ...base,
+        input,
+        result: ok ? summary : undefined,
+        error: ok ? undefined : (typeof summary === "string" ? summary : JSON.stringify(summary)),
+      };
+
+  // Best-effort: never let an audit-write failure surface as a tool error.
+  try {
+    appendFileSync(path, JSON.stringify(record) + "\n", "utf8");
+  } catch {
+    // swallow
+  }
+
+  return result;
+}

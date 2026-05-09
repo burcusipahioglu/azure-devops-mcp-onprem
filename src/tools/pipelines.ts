@@ -5,8 +5,9 @@ import {
   BuildStatus,
 } from "azure-devops-node-api/interfaces/BuildInterfaces.js";
 import type { IConnectionProvider } from "../connection/provider.js";
-import { withErrorHandling, jsonResponse } from "../utils/tool-response.js";
-import { topParam } from "../utils/schemas.js";
+import { withErrorHandling, jsonResponse, dryRunResponse } from "../utils/tool-response.js";
+import { topParam, dryRunParam } from "../utils/schemas.js";
+import { withAudit } from "../utils/audit.js";
 
 const BUILD_STATUS_MAP: Record<string, BuildStatus> = {
   all: BuildStatus.All,
@@ -23,6 +24,7 @@ export function registerPipelineTools(server: McpServer, provider: IConnectionPr
     "list_build_definitions",
     {
       description: "List build/pipeline definitions in the project",
+      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: true },
       inputSchema: {
         name: z
           .string()
@@ -61,7 +63,8 @@ export function registerPipelineTools(server: McpServer, provider: IConnectionPr
   server.registerTool(
     "queue_build",
     {
-      description: "Queue (trigger) a build pipeline. WARNING: This is a WRITE operation that starts a build. Show the user the definition ID, branch, and parameters before calling, and ask for confirmation.",
+      description: "Queue (trigger) a build pipeline. WARNING: This is a WRITE operation that consumes agent time and may trigger downstream side effects (deploys, notifications). Show the user the definition ID, branch, and parameters before calling, and ask for confirmation. Tip: pass dryRun: true first to preview the exact payload before queueing.",
+      annotations: { destructiveHint: false, idempotentHint: false, openWorldHint: true },
       inputSchema: {
         definitionId: z.number().describe("Build definition ID"),
         sourceBranch: z
@@ -72,10 +75,12 @@ export function registerPipelineTools(server: McpServer, provider: IConnectionPr
           .record(z.string(), z.string())
           .optional()
           .describe("Build parameters as key-value pairs"),
+        dryRun: dryRunParam,
       },
     },
-    ({ definitionId, sourceBranch, parameters }) =>
-      withErrorHandling(async () => {
+    (input) =>
+      withAudit(provider, "queue_build", input, withErrorHandling(async () => {
+        const { definitionId, sourceBranch, parameters, dryRun } = input;
         const { api, project } = await provider.getBuildContext();
 
         const build: Partial<Build> = {
@@ -92,6 +97,14 @@ export function registerPipelineTools(server: McpServer, provider: IConnectionPr
           build.parameters = JSON.stringify(parameters);
         }
 
+        if (dryRun) {
+          return dryRunResponse({
+            action: "WOULD_QUEUE_BUILD",
+            wouldBe: { project, payload: build },
+            notes: "No build queued, no agent time consumed. Re-call with dryRun omitted or false to queue.",
+          });
+        }
+
         const queuedBuild = await api.queueBuild(build as Build, project);
 
         return jsonResponse({
@@ -103,13 +116,14 @@ export function registerPipelineTools(server: McpServer, provider: IConnectionPr
           definition: queuedBuild.definition?.name,
           requestedBy: queuedBuild.requestedBy?.displayName,
         });
-      })
+      }))
   );
 
   server.registerTool(
     "get_build",
     {
       description: "Get the status and details of a specific build",
+      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: true },
       inputSchema: {
         buildId: z.number().describe("Build ID"),
       },
@@ -141,6 +155,7 @@ export function registerPipelineTools(server: McpServer, provider: IConnectionPr
     "list_builds",
     {
       description: "List recent builds with optional filters",
+      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: true },
       inputSchema: {
         definitionId: z
           .number()
@@ -202,6 +217,7 @@ export function registerPipelineTools(server: McpServer, provider: IConnectionPr
     "list_releases",
     {
       description: "List releases with optional filters",
+      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: true },
       inputSchema: {
         definitionId: z
           .number()

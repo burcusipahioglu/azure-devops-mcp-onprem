@@ -12,6 +12,7 @@ export function registerWikiTools(server: McpServer, provider: IConnectionProvid
     "list_wikis",
     {
       description: "List all wikis in the project. Azure DevOps supports project wikis and code wikis (backed by a Git repository).",
+      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: true },
       inputSchema: {},
     },
     () =>
@@ -38,6 +39,7 @@ export function registerWikiTools(server: McpServer, provider: IConnectionProvid
     "get_wiki_page",
     {
       description: "Get the content of a wiki page by path. Returns the page content in Markdown format.",
+      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: true },
       inputSchema: {
         wikiIdentifier: z
           .string()
@@ -87,6 +89,7 @@ export function registerWikiTools(server: McpServer, provider: IConnectionProvid
     "wiki_browse",
     {
       description: "Browse wiki page tree — list child pages under a given path. Similar to a table of contents view.",
+      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: true },
       inputSchema: {
         wikiIdentifier: z
           .string()
@@ -152,6 +155,7 @@ export function registerWikiTools(server: McpServer, provider: IConnectionProvid
     "get_wiki_page_stats",
     {
       description: "Get page view statistics for a wiki page. Useful for understanding which documentation pages are most visited.",
+      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: true },
       inputSchema: {
         wikiIdentifier: z
           .string()
@@ -185,6 +189,7 @@ export function registerWikiTools(server: McpServer, provider: IConnectionProvid
     "search_wiki_pages",
     {
       description: "Search for wiki pages by fetching pages in batch with view statistics. Returns page paths and view counts, useful for finding popular or recently viewed documentation.",
+      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: true },
       inputSchema: {
         wikiIdentifier: z
           .string()

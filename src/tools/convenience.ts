@@ -144,6 +144,7 @@ export function registerConvenienceTools(server: McpServer, provider: IConnectio
     "get_my_sprint_items",
     {
       description: "Get all work items assigned to you in the current sprint/iteration. Optionally filter by work item type.",
+      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: true },
       inputSchema: {
         workItemType: z
           .string()
@@ -227,6 +228,7 @@ export function registerConvenienceTools(server: McpServer, provider: IConnectio
     "search_work_items_by_tag",
     {
       description: "Search work items by one or more tags. Returns matching items across all iterations.",
+      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: true },
       inputSchema: {
         tags: z
           .array(z.string())
@@ -325,6 +327,7 @@ export function registerConvenienceTools(server: McpServer, provider: IConnectio
     "get_work_item_statistics",
     {
       description: "Get work item counts grouped by Area Path. Useful for finding which areas have the most bugs, PBIs, or other work item types over a given time period. Supports pagination to retrieve all results beyond the 200-item WIQL limit.",
+      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: true },
       inputSchema: {
         workItemTypes: z
           .array(z.string())
@@ -477,6 +480,7 @@ export function registerConvenienceTools(server: McpServer, provider: IConnectio
     "get_current_user",
     {
       description: "Get the identity of the authenticated Azure DevOps user (the PAT owner). Returns displayName, id, and uniqueName. Useful when you need the 'me' identity explicitly; most owner/author filter params also accept '@me' directly.",
+      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: true },
       inputSchema: {},
     },
     () =>

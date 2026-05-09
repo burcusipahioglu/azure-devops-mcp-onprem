@@ -5,14 +5,16 @@ import {
   PullRequestStatus,
 } from "azure-devops-node-api/interfaces/GitInterfaces.js";
 import type { IConnectionProvider } from "../connection/provider.js";
-import { withErrorHandling, jsonResponse, textResponse } from "../utils/tool-response.js";
-import { topParam } from "../utils/schemas.js";
+import { withErrorHandling, jsonResponse, textResponse, dryRunResponse } from "../utils/tool-response.js";
+import { topParam, dryRunParam } from "../utils/schemas.js";
+import { withAudit } from "../utils/audit.js";
 
 export function registerGitTools(server: McpServer, provider: IConnectionProvider): void {
   server.registerTool(
     "list_repositories",
     {
       description: "List all Git repositories in the Azure DevOps project",
+      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: true },
     },
     () =>
       withErrorHandling(async () => {
@@ -35,6 +37,7 @@ export function registerGitTools(server: McpServer, provider: IConnectionProvide
     "list_branches",
     {
       description: "List branches for a Git repository",
+      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: true },
       inputSchema: {
         repositoryId: z.string().describe("Repository name or ID"),
       },
@@ -60,6 +63,7 @@ export function registerGitTools(server: McpServer, provider: IConnectionProvide
     "get_file_content",
     {
       description: "Get the content of a file from a Git repository",
+      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: true },
       inputSchema: {
         repositoryId: z.string().describe("Repository name or ID"),
         path: z
@@ -112,6 +116,7 @@ export function registerGitTools(server: McpServer, provider: IConnectionProvide
     "list_pull_requests",
     {
       description: "List pull requests in a repository with optional filters",
+      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: true },
       inputSchema: {
         repositoryId: z.string().describe("Repository name or ID"),
         status: z
@@ -165,6 +170,7 @@ export function registerGitTools(server: McpServer, provider: IConnectionProvide
     "get_pull_request",
     {
       description: "Get detailed information about a specific pull request",
+      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: true },
       inputSchema: {
         repositoryId: z.string().describe("Repository name or ID"),
         pullRequestId: z.number().describe("Pull request ID"),
@@ -187,7 +193,8 @@ export function registerGitTools(server: McpServer, provider: IConnectionProvide
   server.registerTool(
     "create_pull_request",
     {
-      description: "Create a new pull request. WARNING: This is a WRITE operation. Show the user the repository, title, source/target branches, and reviewers before calling, and ask for confirmation.",
+      description: "Create a new pull request. WARNING: This is a WRITE operation that notifies reviewers and creates a record visible to the team. Show the user the repository, title, source/target branches, and reviewers before calling, and ask for confirmation. Tip: pass dryRun: true first to preview the exact payload before posting.",
+      annotations: { destructiveHint: false, idempotentHint: false, openWorldHint: true },
       inputSchema: {
         repositoryId: z.string().describe("Repository name or ID"),
         title: z.string().describe("PR title"),
@@ -209,10 +216,12 @@ export function registerGitTools(server: McpServer, provider: IConnectionProvide
           .array(z.string())
           .optional()
           .describe("Array of reviewer unique names or IDs"),
+        dryRun: dryRunParam,
       },
     },
-    ({ repositoryId, title, description, sourceBranch, targetBranch, reviewers }) =>
-      withErrorHandling(async () => {
+    (input) =>
+      withAudit(provider, "create_pull_request", input, withErrorHandling(async () => {
+        const { repositoryId, title, description, sourceBranch, targetBranch, reviewers, dryRun } = input;
         const { api, project } = await provider.getGitContext();
 
         const normalize = (branch: string) =>
@@ -231,6 +240,14 @@ export function registerGitTools(server: McpServer, provider: IConnectionProvide
           prToCreate.reviewers = reviewers.map((r) => ({ id: r }));
         }
 
+        if (dryRun) {
+          return dryRunResponse({
+            action: "WOULD_CREATE_PULL_REQUEST",
+            wouldBe: { project, repositoryId, payload: prToCreate },
+            notes: "No PR created, no reviewers notified. Re-call with dryRun omitted or false to post.",
+          });
+        }
+
         const pr = await api.createPullRequest(
           prToCreate as Parameters<typeof api.createPullRequest>[0],
           repositoryId,
@@ -245,6 +262,6 @@ export function registerGitTools(server: McpServer, provider: IConnectionProvide
           sourceBranch: pr.sourceRefName,
           targetBranch: pr.targetRefName,
         });
-      })
+      }))
   );
 }

@@ -14,6 +14,7 @@ export function registerGitAdvancedTools(server: McpServer, provider: IConnectio
     "list_commits",
     {
       description: "List commits in a Git repository with optional filters (author, date range, path, branch). Returns commit history with messages, authors, and dates.",
+      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: true },
       inputSchema: {
         repositoryId: z.string().describe("Repository name or ID"),
         branch: z
@@ -91,6 +92,7 @@ export function registerGitAdvancedTools(server: McpServer, provider: IConnectio
     "get_commit_changes",
     {
       description: "Get the list of file changes (adds, edits, deletes) in a specific Git commit",
+      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: true },
       inputSchema: {
         repositoryId: z.string().describe("Repository name or ID"),
         commitId: z.string().describe("Full commit SHA"),
@@ -128,6 +130,7 @@ export function registerGitAdvancedTools(server: McpServer, provider: IConnectio
     "compare_branches",
     {
       description: "Compare two branches or commits — shows ahead/behind counts and changed files. Useful for reviewing what changed between branches before creating a PR.",
+      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: true },
       inputSchema: {
         repositoryId: z.string().describe("Repository name or ID"),
         baseBranch: z

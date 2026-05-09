@@ -7,6 +7,7 @@ import {
 import type { IConnectionProvider } from "../connection/provider.js";
 import { withErrorHandling, jsonResponse, extractErrorMessage } from "../utils/tool-response.js";
 import { topParam, skipParam } from "../utils/schemas.js";
+import { withAudit } from "../utils/audit.js";
 import { extractDisplayValue } from "../utils/work-item-helpers.js";
 import { WORK_ITEM_BATCH_SIZE } from "../constants.js";
 
@@ -15,6 +16,7 @@ export function registerWorkItemAdvancedTools(server: McpServer, provider: IConn
     "get_work_item_history",
     {
       description: "Get the full change history of a work item — shows who changed which fields, when, and what the old/new values were. Useful for auditing and understanding how a bug or task evolved over time.",
+      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: true },
       inputSchema: {
         workItemId: z.number().describe("Work item ID"),
         top: topParam(50),
@@ -67,6 +69,7 @@ export function registerWorkItemAdvancedTools(server: McpServer, provider: IConn
     "bulk_update_work_items",
     {
       description: "Update multiple work items at once with the same field values. Useful for batch state changes, sprint reassignment, or bulk tagging.\n\n⚠️ CRITICAL WARNING: This is a HIGH-RISK BULK WRITE operation. Before calling this tool you MUST:\n1. List ALL work item IDs and the fields that will be changed\n2. Show the user a clear summary: \"I will update [N] work items ([list IDs]) — setting [field1] to [value1], [field2] to [value2]\"\n3. Warn about the impact: \"This will modify [N] items. This action cannot be easily undone.\"\n4. Wait for EXPLICIT user confirmation (e.g. \"yes\", \"go ahead\", \"approved\")\n\nDo NOT proceed without user approval. The tool returns a detailed before/after report for every item.",
+      annotations: { destructiveHint: true, idempotentHint: true, openWorldHint: true },
       inputSchema: {
         ids: z
           .array(z.number())
@@ -78,8 +81,9 @@ export function registerWorkItemAdvancedTools(server: McpServer, provider: IConn
           ),
       },
     },
-    ({ ids, fields }) =>
-      withErrorHandling(async () => {
+    (input) =>
+      withAudit(provider, "bulk_update_work_items", input, withErrorHandling(async () => {
+        const { ids, fields } = input;
         const { api, project } = await provider.getWorkItemContext();
 
         const fieldNames = Object.keys(fields).map((f) =>
@@ -176,6 +180,6 @@ export function registerWorkItemAdvancedTools(server: McpServer, provider: IConn
           },
           items: results,
         });
-      })
+      }))
   );
 }

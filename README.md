@@ -15,7 +15,7 @@ This MCP server enables AI assistants to work with on-premises Azure DevOps Serv
 → Runs locally without requiring a cloud proxy
 → Supports both Git and TFVC workflows (including shelvesets, changesets, and labels)
 
-[Quick Start](#quick-start-for-individuals) · [Enterprise Setup](#enterprise-setup-for-teams) · [Privacy](#privacy--data-flow) · [Tool Reference](#tool-reference) · [Multi-Instance](#multi-instance-setup) · [Security](#security)
+[Quick Start](#quick-start-for-individuals) · [Enterprise Setup](#enterprise-setup-for-teams) · [Write Safety](#write-safety) · [Privacy](#privacy--data-flow) · [Tool Reference](#tool-reference) · [Multi-Instance](#multi-instance-setup) · [Security](#security)
 
 </div>
 
@@ -49,7 +49,7 @@ Supports both Git and TFVC, runs locally without external dependencies, and can 
 | **Multi-Instance** | Multiple TFS servers | `AZURE_DEVOPS_PROFILE` loads `.env.<name>` — run against several TFS instances simultaneously |
 | **`@me` Token** | Current-user shortcut | `owner` / `author` / `assignedTo` accept `@me` — resolved per tenant, stateless for multi-agent setups |
 | **Multi-Client** | MCP-compatible clients | Tested: Claude Code/Desktop, GitHub Copilot, Cursor, Visual Studio 2022. Should work with any MCP-compatible client (e.g., Codex CLI, Antigravity) |
-| **Safe Writes** | Confirmation required | All mutating tools need explicit user approval; WIQL injection prevention; bounded pagination; scrubbed errors |
+| **Safe Writes** | Multi-layer write safety | Confirmation, dry-run preview, opt-in audit log, WIQL injection prevention. [Details ↓](#write-safety) |
 
 ---
 
@@ -204,6 +204,19 @@ The startup log reports which domains were enabled and disabled, e.g.:
 Enabled domains (4/7): work_items, tfvc, pipelines, convenience
 Disabled domains: git, wiki, test_plans
 ```
+
+## Write Safety
+
+Four layers, all on by default except the last two opt-ins:
+
+| Layer | Scope | How to enable |
+|-------|-------|---------------|
+| **MCP annotations** | All 48 tools (`readOnlyHint`/`destructiveHint`/`idempotentHint`/`openWorldHint`) — clients can skip confirmation on reads, render warnings on destructive writes | Always on |
+| **Confirmation directive** | Every write's `description` instructs the LLM to show the payload and ask before calling | Always on |
+| **Dry-run preview** | `add_work_item_comment`, `create_pull_request`, `queue_build` — pass `dryRun: true` to get the literal API payload back without calling | Per-call |
+| **Audit log** | JSONL append per write call (timestamp, tool, user, input, result, dryRun, ok, durationMs) | `AZURE_DEVOPS_AUDIT_LOG=/path/to/audit.jsonl` |
+
+**Audit privacy:** set `AZURE_DEVOPS_AUDIT_REDACT=1` to keep only numeric IDs and key shape, dropping all string values.
 
 ## Privacy & Data Flow
 
@@ -793,24 +806,6 @@ list_commits({ repositoryId: "my-repo", branch: "feature/login", author: "@me", 
 ```
 
 > **Note:** WIQL queries (`query_work_items`, `get_my_sprint_items`) use Azure DevOps' native `@Me` macro — no server-side resolution needed.
-
-## Write Operation Safety
-
-All write operations require explicit user confirmation before execution. The AI assistant is instructed to:
-
-1. Show the user exactly what will be changed
-2. Ask for explicit approval before proceeding
-3. Return detailed reports after execution
-
-| Tool | Safety Level | Report |
-|------|-------------|--------|
-| `create_work_item` | Confirm before create | Returns created item ID and all fields |
-| `update_work_item` | Confirm before update | Returns before/after diff for each field |
-| `add_work_item_comment` | Confirm before post | Returns comment details |
-| `link_work_items` | Confirm before link | Returns link confirmation |
-| `bulk_update_work_items` | **Critical** — full impact summary required | Returns per-item before/after report |
-| `create_pull_request` | Confirm before create | Returns PR ID and details |
-| `queue_build` | Confirm before trigger | Returns build ID and status |
 
 ## Cloud (Azure DevOps Services) support
 

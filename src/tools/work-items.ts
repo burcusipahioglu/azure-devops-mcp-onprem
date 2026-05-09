@@ -6,8 +6,9 @@ import {
   Operation,
 } from "azure-devops-node-api/interfaces/common/VSSInterfaces.js";
 import type { IConnectionProvider } from "../connection/provider.js";
-import { withErrorHandling, jsonResponse, textResponse } from "../utils/tool-response.js";
-import { topParam } from "../utils/schemas.js";
+import { withErrorHandling, jsonResponse, textResponse, dryRunResponse } from "../utils/tool-response.js";
+import { topParam, dryRunParam } from "../utils/schemas.js";
+import { withAudit } from "../utils/audit.js";
 import { extractDisplayValue, batchGetWorkItems } from "../utils/work-item-helpers.js";
 import { normalizeFieldPath, buildUpdatePatchDocument } from "../utils/patch-document.js";
 import { resolveMe } from "../utils/me-resolver.js";
@@ -25,6 +26,7 @@ export function registerWorkItemTools(server: McpServer, provider: IConnectionPr
     "query_work_items",
     {
       description: "Execute a WIQL (Work Item Query Language) query against Azure DevOps work items. IMPORTANT WIQL rules: [System.AreaPath] and [System.IterationPath] only support '=', '<>', and 'UNDER' operators (NOT 'CONTAINS'). Use 'UNDER' to match a path and all its children. [System.Tags] supports 'CONTAINS'. Example: [System.AreaPath] UNDER 'MyProject\\Backend'",
+      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: true },
       inputSchema: {
         query: z
           .string()
@@ -93,6 +95,7 @@ export function registerWorkItemTools(server: McpServer, provider: IConnectionPr
     "get_work_item",
     {
       description: "Get a work item by ID with all fields and optional relations",
+      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: true },
       inputSchema: {
         id: z.number().describe("Work item ID"),
         expand: z
@@ -133,6 +136,7 @@ export function registerWorkItemTools(server: McpServer, provider: IConnectionPr
     "create_work_item",
     {
       description: "Create a new work item in Azure DevOps. WARNING: This is a WRITE operation that creates a permanent record. You MUST confirm with the user before calling this tool — show them the type, title, and all fields you will set, and ask for explicit approval.",
+      annotations: { destructiveHint: false, idempotentHint: false, openWorldHint: true },
       inputSchema: {
         type: z
           .string()
@@ -158,16 +162,17 @@ export function registerWorkItemTools(server: McpServer, provider: IConnectionPr
           ),
       },
     },
-    ({
-      type,
-      title,
-      description,
-      assignedTo,
-      areaPath,
-      iterationPath,
-      additionalFields,
-    }) =>
-      withErrorHandling(async () => {
+    (input) =>
+      withAudit(provider, "create_work_item", input, withErrorHandling(async () => {
+        const {
+          type,
+          title,
+          description,
+          assignedTo,
+          areaPath,
+          iterationPath,
+          additionalFields,
+        } = input;
         const { api, project } = await provider.getWorkItemContext();
 
         const document: JsonPatchOperation[] = [
@@ -231,13 +236,14 @@ export function registerWorkItemTools(server: McpServer, provider: IConnectionPr
           iterationPath: workItem?.fields?.["System.IterationPath"],
           url: workItem?.url,
         });
-      })
+      }))
   );
 
   server.registerTool(
     "update_work_item",
     {
       description: "Update an existing work item's fields. WARNING: This is a WRITE operation that modifies an existing record. You MUST confirm with the user before calling — show them the work item ID, current values of fields being changed, and the new values you will set. Ask for explicit approval.",
+      annotations: { destructiveHint: true, idempotentHint: true, openWorldHint: true },
       inputSchema: {
         id: z.number().describe("Work item ID to update"),
         fields: z
@@ -247,8 +253,9 @@ export function registerWorkItemTools(server: McpServer, provider: IConnectionPr
           ),
       },
     },
-    ({ id, fields }) =>
-      withErrorHandling(async () => {
+    (input) =>
+      withAudit(provider, "update_work_item", input, withErrorHandling(async () => {
+        const { id, fields } = input;
         const { api, project } = await provider.getWorkItemContext();
 
         // Fetch current state before updating
@@ -288,21 +295,32 @@ export function registerWorkItemTools(server: McpServer, provider: IConnectionPr
           url: workItem?.url,
           changes,
         });
-      })
+      }))
   );
 
   server.registerTool(
     "add_work_item_comment",
     {
-      description: "Add a comment to a work item. WARNING: This is a WRITE operation. Show the user the comment text and work item ID before calling, and ask for confirmation.",
+      description: "Add a comment to a work item. WARNING: This is a WRITE operation that notifies subscribers and cannot be silently undone. Show the user the comment text and work item ID before calling, and ask for confirmation. Tip: pass dryRun: true first to preview the exact payload before posting.",
+      annotations: { destructiveHint: false, idempotentHint: false, openWorldHint: true },
       inputSchema: {
         workItemId: z.number().describe("Work item ID"),
         text: z.string().describe("Comment text (HTML supported)"),
+        dryRun: dryRunParam,
       },
     },
-    ({ workItemId, text }) =>
-      withErrorHandling(async () => {
+    (input) =>
+      withAudit(provider, "add_work_item_comment", input, withErrorHandling(async () => {
+        const { workItemId, text, dryRun } = input;
         const { api, project } = await provider.getWorkItemContext();
+
+        if (dryRun) {
+          return dryRunResponse({
+            action: "WOULD_ADD_COMMENT",
+            wouldBe: { project, workItemId, text },
+            notes: "No comment posted, no notifications sent. Re-call with dryRun omitted or false to post.",
+          });
+        }
 
         const comment = await api.addComment(
           { text },
@@ -311,13 +329,14 @@ export function registerWorkItemTools(server: McpServer, provider: IConnectionPr
         );
 
         return jsonResponse(comment);
-      })
+      }))
   );
 
   server.registerTool(
     "link_work_items",
     {
       description: "Create a link between two work items. WARNING: This is a WRITE operation. Show the user the source ID, target ID, and link type before calling, and ask for confirmation.",
+      annotations: { destructiveHint: false, idempotentHint: false, openWorldHint: true },
       inputSchema: {
         sourceId: z.number().describe("Source work item ID"),
         targetId: z.number().describe("Target work item ID"),
@@ -330,8 +349,9 @@ export function registerWorkItemTools(server: McpServer, provider: IConnectionPr
         comment: z.string().optional().describe("Optional link comment"),
       },
     },
-    ({ sourceId, targetId, linkType, comment }) =>
-      withErrorHandling(async () => {
+    (input) =>
+      withAudit(provider, "link_work_items", input, withErrorHandling(async () => {
+        const { sourceId, targetId, linkType, comment } = input;
         const { api, project, orgUrl } = await provider.getWorkItemContext();
 
         const targetUrl = `${orgUrl}/_apis/wit/workItems/${targetId}`;
@@ -365,6 +385,6 @@ export function registerWorkItemTools(server: McpServer, provider: IConnectionPr
             },
           ],
         };
-      })
+      }))
   );
 }

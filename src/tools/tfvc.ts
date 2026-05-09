@@ -35,6 +35,7 @@ export function registerTfvcTools(server: McpServer, provider: IConnectionProvid
     "tfvc_browse",
     {
       description: "Browse files and folders in TFVC at a given path (like Source Control Explorer)",
+      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: true },
       inputSchema: {
         scopePath: z
           .string()
@@ -82,6 +83,7 @@ export function registerTfvcTools(server: McpServer, provider: IConnectionProvid
     "tfvc_get_file",
     {
       description: "Get the content of a file from TFVC source control",
+      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: true },
       inputSchema: {
         path: z
           .string()
@@ -131,6 +133,7 @@ export function registerTfvcTools(server: McpServer, provider: IConnectionProvid
     "tfvc_get_changeset",
     {
       description: "Get details of a specific TFVC changeset including changes and associated work items",
+      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: true },
       inputSchema: {
         id: z.number().describe("Changeset ID"),
         includeWorkItems: z
@@ -170,6 +173,7 @@ export function registerTfvcTools(server: McpServer, provider: IConnectionProvid
     "tfvc_list_changesets",
     {
       description: "List recent TFVC changesets with optional filters (author, date range, item path)",
+      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: true },
       inputSchema: {
         itemPath: z
           .string()
@@ -227,6 +231,7 @@ export function registerTfvcTools(server: McpServer, provider: IConnectionProvid
     "tfvc_get_changeset_changes",
     {
       description: "Get the list of file changes (adds, edits, deletes) in a specific changeset",
+      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: true },
       inputSchema: {
         changesetId: z.number().describe("Changeset ID"),
         top: topParam(100),
@@ -258,6 +263,7 @@ export function registerTfvcTools(server: McpServer, provider: IConnectionProvid
     "tfvc_get_changeset_work_items",
     {
       description: "Get work items associated with a specific TFVC changeset",
+      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: true },
       inputSchema: {
         changesetId: z.number().describe("Changeset ID"),
       },
@@ -275,7 +281,8 @@ export function registerTfvcTools(server: McpServer, provider: IConnectionProvid
   server.registerTool(
     "tfvc_list_branches",
     {
-      description: "List TFVC branches in the project",
+      description: "List TFVC items that are explicitly marked as branches (via 'Convert to Branch' in Visual Studio or `tf branch`). IMPORTANT: many TFVC projects use a folder-as-branch convention (e.g. $/Project/Main, $/Project/Dev) without marking folders as branches — those will NOT appear here. If this returns empty, the project likely uses unmarked folders; call `tfvc_browse` instead to see the actual folder structure.",
+      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: true },
       inputSchema: {
         includeChildren: z
           .boolean()
@@ -320,6 +327,7 @@ export function registerTfvcTools(server: McpServer, provider: IConnectionProvid
     "tfvc_list_shelvesets",
     {
       description: "List TFVC shelvesets (pending changes stored on the server)",
+      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: true },
       inputSchema: {
         owner: z
           .string()
@@ -367,6 +375,7 @@ export function registerTfvcTools(server: McpServer, provider: IConnectionProvid
     "tfvc_get_shelveset",
     {
       description: "Get details of a specific TFVC shelveset including its changes",
+      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: true },
       inputSchema: {
         shelvesetId: z
           .string()
@@ -406,6 +415,7 @@ export function registerTfvcTools(server: McpServer, provider: IConnectionProvid
     "tfvc_list_labels",
     {
       description: "List TFVC labels in the project",
+      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: true },
       inputSchema: {
         name: z
           .string()
@@ -456,6 +466,7 @@ export function registerTfvcTools(server: McpServer, provider: IConnectionProvid
     "get_work_item_changesets",
     {
       description: "Get all TFVC changesets linked to a work item, including file changes and changeset details. Useful for reviewing what code changes were made for a bug fix or feature.",
+      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: true },
       inputSchema: {
         workItemId: z
           .number()

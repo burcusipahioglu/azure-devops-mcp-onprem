@@ -37,3 +37,7 @@ yarn-debug.log*
 
 # Testing
 coverage/
+
+# Internal dev notes — keep local, don't publish
+TODO.md
+ado-audit.jsonl

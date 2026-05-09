@@ -26,6 +26,15 @@ export function jsonResponse(data: unknown): ToolResult {
   };
 }
 
+export function dryRunResponse(payload: {
+  action: string;
+  before?: unknown;
+  wouldBe: unknown;
+  notes?: string;
+}): ToolResult {
+  return jsonResponse({ dryRun: true, ...payload });
+}
+
 export function textResponse(text: string): ToolResult {
   return { content: [{ type: "text" as const, text }] };
 }
