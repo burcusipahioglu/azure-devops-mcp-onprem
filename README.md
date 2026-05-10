@@ -8,6 +8,7 @@
 [![Azure DevOps](https://img.shields.io/badge/Azure_DevOps-Server_2022.2-0078D7?logo=azure-devops&logoColor=white)](https://learn.microsoft.com/en-us/azure/devops/server/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Tools](https://img.shields.io/badge/Tools-48-green)](https://github.com/burcusipahioglu/azure-devops-mcp-onprem#tool-reference)
+[![npm version](https://img.shields.io/npm/v/@burcusg/azure-devops-mcp-onprem.svg)](https://www.npmjs.com/package/@burcusg/azure-devops-mcp-onprem)
 
 This MCP server enables AI assistants to work with on-premises Azure DevOps Server.
 
