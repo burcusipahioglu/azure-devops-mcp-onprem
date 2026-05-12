@@ -1,6 +1,10 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { WorkItemExpand } from "azure-devops-node-api/interfaces/WorkItemTrackingInterfaces.js";
+import {
+  WorkItemExpand,
+  CommentSortOrder,
+  CommentExpandOptions,
+} from "azure-devops-node-api/interfaces/WorkItemTrackingInterfaces.js";
 import {
   JsonPatchOperation,
   Operation,
@@ -296,6 +300,48 @@ export function registerWorkItemTools(server: McpServer, provider: IConnectionPr
           changes,
         });
       }))
+  );
+
+  server.registerTool(
+    "get_work_item_comments",
+    {
+      description: "List comments on a work item, ordered and paginated. Returns the raw CommentList (comments[], continuationToken, totalCount) so callers can page through large threads.",
+      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: true },
+      inputSchema: {
+        workItemId: z.number().describe("Work item ID"),
+        top: topParam(50),
+        order: z
+          .enum(["asc", "desc"])
+          .optional()
+          .default("asc")
+          .describe("Sort order by creation date"),
+        includeRenderedText: z
+          .boolean()
+          .optional()
+          .default(false)
+          .describe("Also return the rendered HTML alongside the raw text/markdown"),
+        continuationToken: z
+          .string()
+          .optional()
+          .describe("Token from a previous response to fetch the next page"),
+      },
+    },
+    ({ workItemId, top, order, includeRenderedText, continuationToken }) =>
+      withErrorHandling(async () => {
+        const { api, project } = await provider.getWorkItemContext();
+
+        const commentList = await api.getComments(
+          project,
+          workItemId,
+          top,
+          continuationToken,
+          undefined,
+          includeRenderedText ? CommentExpandOptions.RenderedText : CommentExpandOptions.None,
+          order === "desc" ? CommentSortOrder.Desc : CommentSortOrder.Asc
+        );
+
+        return jsonResponse(commentList);
+      })
   );
 
   server.registerTool(

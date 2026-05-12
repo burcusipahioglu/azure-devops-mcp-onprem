@@ -122,12 +122,13 @@ graph TD
 
 ```mermaid
 mindmap
-  root((Azure DevOps<br/>MCP Server<br/>48 Tools))
-    **Work Items — 8**
+  root((Azure DevOps<br/>MCP Server<br/>49 Tools))
+    **Work Items — 9**
       query_work_items
       get_work_item
       create_work_item
       update_work_item
+      get_work_item_comments
       add_work_item_comment
       link_work_items
       get_work_item_history
@@ -672,7 +673,7 @@ src/
     me-resolver.ts           resolveMe() — expands '@me' token to current user's display name
     patch-document.ts        normalizeFieldPath() / buildUpdatePatchDocument() — JsonPatch helpers for work-item updates
   tools/
-    work-items.ts            6 tools — WIQL queries, CRUD, comments, links
+    work-items.ts            7 tools — WIQL queries, CRUD, comments, links
     work-items-advanced.ts   2 tools — change history, bulk update with before/after report
     git.ts                   6 tools — repos, branches, file content, pull requests
     git-advanced.ts          3 tools — commit history, commit changes, branch comparison
@@ -685,7 +686,7 @@ src/
 
 ## Tool Reference
 
-### Work Items (6 tools)
+### Work Items (7 tools)
 
 | Tool | Description | Key Parameters |
 |------|-------------|----------------|
@@ -693,6 +694,7 @@ src/
 | `get_work_item` | Get work item by ID | `id`, `expand` (none/relations/fields/links/all) |
 | `create_work_item` | Create a new work item | `type`, `title`, `description`, `assignedTo` (accepts `@me`), `areaPath`, `iterationPath` |
 | `update_work_item` | Update work item fields (returns before/after diff) | `id`, `fields` (key-value map) |
+| `get_work_item_comments` | List comments (paginated, asc/desc, optional rendered HTML) | `workItemId`, `top`, `order`, `includeRenderedText`, `continuationToken` |
 | `add_work_item_comment` | Add a comment | `workItemId`, `text` |
 | `link_work_items` | Link two work items | `sourceId`, `targetId`, `linkType` |
 
