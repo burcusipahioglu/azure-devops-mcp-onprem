@@ -82,7 +82,7 @@ export function registerWorkItemAdvancedTools(server: McpServer, provider: IConn
       },
     },
     (input) =>
-      withAudit(provider, "bulk_update_work_items", input, withErrorHandling(async () => {
+      withAudit(provider, "bulk_update_work_items", input, () => withErrorHandling(async () => {
         const { ids, fields } = input;
         const { api, project } = await provider.getWorkItemContext();
 

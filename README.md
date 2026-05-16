@@ -209,14 +209,17 @@ Disabled domains: git, wiki, test_plans
 
 ## Write Safety
 
-Four layers, all on by default except the last two opt-ins:
+Five layers, all on by default except the last three opt-ins:
 
 | Layer | Scope | How to enable |
 |-------|-------|---------------|
 | **MCP annotations** | All 48 tools (`readOnlyHint`/`destructiveHint`/`idempotentHint`/`openWorldHint`) — clients can skip confirmation on reads, render warnings on destructive writes | Always on |
 | **Confirmation directive** | Every write's `description` instructs the LLM to show the payload and ask before calling | Always on |
+| **Readonly mode** | Server-level kill switch — all 7 write tools refuse to execute with a clear error; reads unaffected | `AZURE_DEVOPS_MODE=readonly` |
 | **Dry-run preview** | `add_work_item_comment`, `create_pull_request`, `queue_build` — pass `dryRun: true` to get the literal API payload back without calling | Per-call |
-| **Audit log** | JSONL append per write call (timestamp, tool, user, input, result, dryRun, ok, durationMs) | `AZURE_DEVOPS_AUDIT_LOG=/path/to/audit.jsonl` |
+| **Audit log** | JSONL append per write call (timestamp, tool, user, input, result, dryRun, ok, durationMs); blocked-by-readonly attempts are also recorded | `AZURE_DEVOPS_AUDIT_LOG=/path/to/audit.jsonl` |
+
+**Readonly mode:** set `AZURE_DEVOPS_MODE=readonly` for CI runs, demos, onboarding, or any deployment where writes shouldn't happen. The LLM cannot bypass it — every write tool short-circuits to `isError: true` before any API call. Leave unset (or set to `write`) for normal operation.
 
 **Audit privacy:** set `AZURE_DEVOPS_AUDIT_REDACT=1` to keep only numeric IDs and key shape, dropping all string values.
 

@@ -1,6 +1,7 @@
 import { appendFileSync } from "node:fs";
 import type { IConnectionProvider } from "../connection/provider.js";
 import type { ToolResult } from "./tool-response.js";
+import { isReadonlyMode, readonlyBlockedResponse } from "./write-mode.js";
 
 // Read env vars lazily on each call — module top-level code runs BEFORE
 // index.ts's dotenv `loadEnv()` (ESM hoists imports), so capturing them at
@@ -53,29 +54,75 @@ function redactPayload(
   return out;
 }
 
+function writeAuditRecord(path: string, record: unknown): void {
+  // Best-effort: never let an audit-write failure surface as a tool error.
+  try {
+    appendFileSync(path, JSON.stringify(record) + "\n", "utf8");
+  } catch {
+    // swallow
+  }
+}
+
+async function resolveUser(provider: IConnectionProvider): Promise<string> {
+  try {
+    const u = await provider.resolveCurrentUser();
+    return u.uniqueName || u.displayName || "unknown";
+  } catch {
+    // resolveCurrentUser can fail before the connection warms up; the audit
+    // record is still useful without it.
+    return "unknown";
+  }
+}
+
+// Wraps a write tool's work. Two responsibilities:
+//   1. Enforce server-level write mode — if AZURE_DEVOPS_MODE=readonly, refuse
+//      to invoke workFn() and return an isError ToolResult. Blocked attempts
+//      are still recorded in the audit log when AZURE_DEVOPS_AUDIT_LOG is set
+//      (forensically valuable: shows who tried to write while server was
+//      locked down).
+//   2. Append a JSONL audit record after the work completes (success or
+//      failure), honoring redact mode for environments with strict data
+//      classification.
+//
+// Takes a function (not an already-started Promise) so readonly mode can
+// short-circuit before any API call fires.
 export async function withAudit(
   provider: IConnectionProvider,
   tool: string,
   input: Record<string, unknown>,
-  work: Promise<ToolResult>
+  workFn: () => Promise<ToolResult>
 ): Promise<ToolResult> {
   const path = auditPath();
-  if (!path) return work;
   const redactMode = isRedactMode();
 
+  if (isReadonlyMode()) {
+    const blocked = readonlyBlockedResponse(tool);
+    if (path) {
+      const user = await resolveUser(provider);
+      const base = {
+        ts: new Date().toISOString(),
+        tool,
+        user,
+        dryRun: Boolean(input.dryRun),
+        ok: false,
+        blocked: "readonly_mode",
+        durationMs: 0,
+      };
+      const record = redactMode
+        ? { ...base, redacted: true, input: redactPayload(input) }
+        : { ...base, input };
+      writeAuditRecord(path, record);
+    }
+    return blocked;
+  }
+
+  if (!path) return workFn();
+
   const start = Date.now();
-  const result = await work;
+  const result = await workFn();
   const ok = !result.isError;
   const summary = summarizeResult(result);
-
-  let user = "unknown";
-  try {
-    const u = await provider.resolveCurrentUser();
-    user = u.uniqueName || u.displayName || "unknown";
-  } catch {
-    // resolveCurrentUser can fail before the connection warms up; the audit
-    // record is still useful without it.
-  }
+  const user = await resolveUser(provider);
 
   const base = {
     ts: new Date().toISOString(),
@@ -103,12 +150,6 @@ export async function withAudit(
         error: ok ? undefined : (typeof summary === "string" ? summary : JSON.stringify(summary)),
       };
 
-  // Best-effort: never let an audit-write failure surface as a tool error.
-  try {
-    appendFileSync(path, JSON.stringify(record) + "\n", "utf8");
-  } catch {
-    // swallow
-  }
-
+  writeAuditRecord(path, record);
   return result;
 }

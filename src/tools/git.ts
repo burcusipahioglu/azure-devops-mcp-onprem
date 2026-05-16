@@ -220,7 +220,7 @@ export function registerGitTools(server: McpServer, provider: IConnectionProvide
       },
     },
     (input) =>
-      withAudit(provider, "create_pull_request", input, withErrorHandling(async () => {
+      withAudit(provider, "create_pull_request", input, () => withErrorHandling(async () => {
         const { repositoryId, title, description, sourceBranch, targetBranch, reviewers, dryRun } = input;
         const { api, project } = await provider.getGitContext();
 

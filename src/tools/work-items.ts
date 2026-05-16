@@ -167,7 +167,7 @@ export function registerWorkItemTools(server: McpServer, provider: IConnectionPr
       },
     },
     (input) =>
-      withAudit(provider, "create_work_item", input, withErrorHandling(async () => {
+      withAudit(provider, "create_work_item", input, () => withErrorHandling(async () => {
         const {
           type,
           title,
@@ -258,7 +258,7 @@ export function registerWorkItemTools(server: McpServer, provider: IConnectionPr
       },
     },
     (input) =>
-      withAudit(provider, "update_work_item", input, withErrorHandling(async () => {
+      withAudit(provider, "update_work_item", input, () => withErrorHandling(async () => {
         const { id, fields } = input;
         const { api, project } = await provider.getWorkItemContext();
 
@@ -356,7 +356,7 @@ export function registerWorkItemTools(server: McpServer, provider: IConnectionPr
       },
     },
     (input) =>
-      withAudit(provider, "add_work_item_comment", input, withErrorHandling(async () => {
+      withAudit(provider, "add_work_item_comment", input, () => withErrorHandling(async () => {
         const { workItemId, text, dryRun } = input;
         const { api, project } = await provider.getWorkItemContext();
 
@@ -396,7 +396,7 @@ export function registerWorkItemTools(server: McpServer, provider: IConnectionPr
       },
     },
     (input) =>
-      withAudit(provider, "link_work_items", input, withErrorHandling(async () => {
+      withAudit(provider, "link_work_items", input, () => withErrorHandling(async () => {
         const { sourceId, targetId, linkType, comment } = input;
         const { api, project, orgUrl } = await provider.getWorkItemContext();
 

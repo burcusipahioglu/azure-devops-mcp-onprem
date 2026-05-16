@@ -79,7 +79,7 @@ export function registerPipelineTools(server: McpServer, provider: IConnectionPr
       },
     },
     (input) =>
-      withAudit(provider, "queue_build", input, withErrorHandling(async () => {
+      withAudit(provider, "queue_build", input, () => withErrorHandling(async () => {
         const { definitionId, sourceBranch, parameters, dryRun } = input;
         const { api, project } = await provider.getBuildContext();
 
