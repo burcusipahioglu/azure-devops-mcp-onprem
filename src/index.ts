@@ -50,7 +50,7 @@ const provider = new AzureDevOpsConnectionProvider(config);
 
 const server = new McpServer({
   name: config.serverName,
-  version: "1.1.0",
+  version: "1.3.0",
 });
 
 type ToolRegister = (server: McpServer, provider: AzureDevOpsConnectionProvider) => void;
