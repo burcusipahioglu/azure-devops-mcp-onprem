@@ -48,10 +48,33 @@ import { registerWikiTools } from "./tools/wiki.js";
 const config = loadConfig();
 const provider = new AzureDevOpsConnectionProvider(config);
 
-const server = new McpServer({
-  name: config.serverName,
-  version: "1.3.0",
-});
+const server = new McpServer(
+  {
+    name: config.serverName,
+    version: "1.3.0",
+  },
+  {
+    instructions: [
+      "Azure DevOps MCP server for on-premises Azure DevOps Server (TFS 2022.2) and cloud (dev.azure.com). Tools span 7 domains:",
+      "",
+      "- Work Items (9): WIQL queries, CRUD, comments, history, bulk update, work-item linking.",
+      "- Git (9): repositories, branches, pull requests, commits, file content, branch comparison.",
+      "- TFVC (11): shelvesets, changesets, labels, branches, work-item linkage. The only MCP server with native TFVC tools.",
+      "- Pipelines (5): build definitions, queue builds, list builds and releases.",
+      "- Wiki (5): list wikis, browse, get pages, search, view stats.",
+      "- Test Plans (6): plans, suites, cases, runs, results.",
+      "- Convenience (4): sprint items, tag search, area-path statistics, current user identity.",
+      "",
+      "Filter parameters (owner / author / assignedTo) accept the @me token, resolved per tenant via ConnectionData.",
+      "",
+      "Write safety: every mutating tool short-circuits through an audit wrapper enforcing readonly mode (AZURE_DEVOPS_MODE=readonly), a global write rate limit (default 10/minute, sliding 60s window), optional JSONL audit log with redact mode, and dry-run preview on side-effect-heavy tools (add_work_item_comment, create_pull_request, queue_build). WIQL inputs are sanitized; errors are scrubbed of internal paths and stack traces.",
+      "",
+      "Multi-instance via AZURE_DEVOPS_PROFILE — each instance loads its own .env.<profile> with isolated PAT, project, and tool-domain restriction. Secrets stay out of cloud-synced mcp.json. Domain filtering via AZURE_DEVOPS_ENABLED_DOMAINS lets you load only the tool groups you need.",
+      "",
+      "Authenticates with a single PAT. No Microsoft account or Entra ID required.",
+    ].join("\n"),
+  }
+);
 
 type ToolRegister = (server: McpServer, provider: AzureDevOpsConnectionProvider) => void;
 
