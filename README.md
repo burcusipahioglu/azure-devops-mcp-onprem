@@ -7,118 +7,45 @@
 [![MCP](https://img.shields.io/badge/MCP-Model_Context_Protocol-8B5CF6)](https://modelcontextprotocol.io/)
 [![Azure DevOps](https://img.shields.io/badge/Azure_DevOps-Server_2022.2-0078D7?logo=azure-devops&logoColor=white)](https://learn.microsoft.com/en-us/azure/devops/server/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Tools](https://img.shields.io/badge/Tools-48-green)](https://github.com/burcusipahioglu/azure-devops-mcp-onprem#tool-reference)
+[![Tools](https://img.shields.io/badge/Tools-49-green)](https://github.com/burcusipahioglu/azure-devops-mcp-onprem#tool-reference)
 [![npm version](https://img.shields.io/npm/v/@burcusg/azure-devops-mcp-onprem.svg)](https://www.npmjs.com/package/@burcusg/azure-devops-mcp-onprem)
 
-This MCP server enables AI assistants to work with on-premises Azure DevOps Server.
+**Bring on-premises Azure DevOps Server to your AI assistant.**
 
-→ Query work items, repositories, and pipelines using natural language
-→ Runs locally without requiring a cloud proxy
-→ Supports both Git and TFVC workflows (including shelvesets, changesets, and labels)
+Query work items, repositories, and pipelines in natural language — running locally, no cloud proxy, no telemetry.
+**Full TFVC support.** **Profile-based secrets** — clean multi-instance setup without leaking PATs into `mcp.json`. Layered write safety.
 
-[Quick Start](#quick-start-for-individuals) · [Enterprise Setup](#enterprise-setup-for-teams) · [Write Safety](#write-safety) · [Privacy](#privacy--data-flow) · [Tool Reference](#tool-reference) · [Multi-Instance](#multi-instance-setup) · [Security](#security)
+[Tools](#tools) · [TFVC](#tfvc-support) · [Profiles](#profile-based-secrets) · [Write Safety](#write-safety) · [Setup](#setup)
 
 </div>
 
----
-
-> Runs locally with no telemetry or cloud proxy. [Privacy details ↓](#privacy--data-flow)
+<!-- TODO: hero demo GIF -->
 
 ---
+
+## At a glance
+
+| | |
+|---|---|
+| **49 tools / 7 domains** | Work Items · Git · **TFVC** · Pipelines · Wiki · Test Plans · Convenience |
+| **TFVC native** | 11 dedicated tools — shelvesets, changesets, labels, branches. The reason this server exists. |
+| **Profile-based secrets** | `AZURE_DEVOPS_PROFILE=name` → gitignored `.env.<name>`; no PAT in cloud-synced `mcp.json`. Multi-instance is a natural byproduct. |
+| **Write safety** | 6 layers — MCP annotations · confirmation directive · readonly kill switch · rate limit · dry-run · audit log |
+| **AI clients** | Claude (Code/Desktop), GitHub Copilot, Cursor, Visual Studio Code — any MCP-compatible client |
+| **Local only** | PAT auth, no cloud proxy, no third-party calls, no telemetry |
+| **`@me` token** | `owner` / `author` / `assignedTo` accept `@me` — resolved per tenant, stateless for multi-agent setups |
 
 ### Example questions
 
 > *"Show me all active bugs assigned to me in this sprint"*
 > *"What changed in changeset 12345?"*
 > *"Create a PR from feature/login to develop"*
-> *"Trigger the nightly build on the release branch"*
 > *"List my latest shelvesets"*
-
-### Designed for Enterprise
-
-Built for on-prem Azure DevOps (TFS) environments.
-
-Supports both Git and TFVC, runs locally without external dependencies, and can be configured for multiple teams or collections.
-
-### Key Features
-
-| | Feature | Details |
-|---|---------|---------|
-| **On-Premises** | Azure DevOps Server 2022.2 | Targets self-hosted TFS / Azure DevOps Server — PAT auth, self-signed SSL support |
-| **TFVC Support** | Shelvesets, changesets, labels | 11 TFVC tools covering legacy version control workflows |
-| **48 Tools** | 7 domains | Work Items, Git, TFVC, Pipelines, Wiki, Test Plans, Convenience (selectively loadable via `AZURE_DEVOPS_ENABLED_DOMAINS`) |
-| **Multi-Instance** | Multiple TFS servers | `AZURE_DEVOPS_PROFILE` loads `.env.<name>` — run against several TFS instances simultaneously |
-| **`@me` Token** | Current-user shortcut | `owner` / `author` / `assignedTo` accept `@me` — resolved per tenant, stateless for multi-agent setups |
-| **Multi-Client** | MCP-compatible clients | Tested: Claude Code/Desktop, GitHub Copilot, Cursor, Visual Studio 2022. Should work with any MCP-compatible client (e.g., Codex CLI, Antigravity) |
-| **Safe Writes** | Multi-layer write safety | Confirmation, dry-run preview, opt-in audit log, WIQL injection prevention. [Details ↓](#write-safety) |
+> *"Trigger the nightly build on the release branch"*
 
 ---
 
-## Overview
-
-```mermaid
-graph LR
-    A["🤖 AI Assistants"] -->|MCP Protocol| B["⚙️ MCP Server<br/>48 Tools · 7 Domains"]
-    B -->|REST API| C["☁️ Azure DevOps<br/>On-Prem or Cloud"]
-
-    style A fill:#1e3a5f,stroke:#4a90d9,color:#fff
-    style B fill:#1a1a2e,stroke:#8B5CF6,color:#fff
-    style C fill:#0f3460,stroke:#0078D7,color:#fff
-```
-
-## Architecture
-
-```mermaid
-graph TD
-    GHC["GitHub Copilot"] --> MCP
-    CLI["Copilot CLI"] --> MCP
-    CC["Claude Code"] --> MCP
-    CD["Claude Desktop"] --> MCP
-    VS["Visual Studio 2022"] --> MCP
-    CUR["Cursor"] --> MCP
-    CDX["Codex CLI"] -.-> MCP
-    AG["Antigravity"] -.-> MCP
-
-    MCP["MCP Server — Node.js + TypeScript"]
-
-    MCP --> WI["Work Items — 8 tools"]
-    MCP --> GIT["Git — 9 tools"]
-    MCP --> TFVC["TFVC — 11 tools"]
-    MCP --> PIPE["Pipelines — 5 tools"]
-    MCP --> CONV["Convenience — 4 tools"]
-    MCP --> TEST["Test Mgmt — 6 tools"]
-    MCP --> WIKI["Wiki — 5 tools"]
-
-    WI --> ADS
-    GIT --> ADS
-    TFVC --> ADS
-    PIPE --> ADS
-    CONV --> ADS
-    TEST --> ADS
-    WIKI --> ADS
-
-    ADS["Azure DevOps Server — On-Prem or Cloud"]
-
-    style GHC fill:#1e3a5f,stroke:#4a90d9,color:#fff
-    style CLI fill:#1e3a5f,stroke:#4a90d9,color:#fff
-    style CC fill:#1e3a5f,stroke:#4a90d9,color:#fff
-    style CD fill:#1e3a5f,stroke:#4a90d9,color:#fff
-    style VS fill:#1e3a5f,stroke:#4a90d9,color:#fff
-    style CUR fill:#1e3a5f,stroke:#4a90d9,color:#fff
-    style CDX fill:#1e3a5f,stroke:#4a90d9,color:#fff,stroke-dasharray: 5 5
-    style AG fill:#1e3a5f,stroke:#4a90d9,color:#fff,stroke-dasharray: 5 5
-    style MCP fill:#1a1a2e,stroke:#8B5CF6,color:#fff
-    style WI fill:#16213e,stroke:#4a90d9,color:#fff
-    style GIT fill:#16213e,stroke:#4a90d9,color:#fff
-    style TFVC fill:#16213e,stroke:#4a90d9,color:#fff
-    style PIPE fill:#16213e,stroke:#4a90d9,color:#fff
-    style CONV fill:#16213e,stroke:#4a90d9,color:#fff
-    style TEST fill:#16213e,stroke:#4a90d9,color:#fff
-    style WIKI fill:#16213e,stroke:#4a90d9,color:#fff
-    style ADS fill:#0f3460,stroke:#0078D7,color:#fff
-```
-
-## Tool Overview
+## Tools
 
 ```mermaid
 mindmap
@@ -181,16 +108,14 @@ mindmap
       search_wiki_pages
 ```
 
-### Restrict which tool domains load
+Full per-tool parameter reference: [Tool Reference ↓](#tool-reference)
 
-The 48 tools are grouped into 7 domains. By default all 7 load. If you only need a subset, set `AZURE_DEVOPS_ENABLED_DOMAINS` in your `.env` to a comma-separated list — disabled domains' tools are not registered, which trims the AI client's tool list and reduces tool-selection confusion.
+### Restrict tools per role
 
-Valid domains: `work_items`, `git`, `tfvc`, `pipelines`, `wiki`, `test_plans`, `convenience`.
+Set `AZURE_DEVOPS_ENABLED_DOMAINS` to a comma-separated list — disabled domains aren't registered, trimming the AI client's tool list and reducing tool-selection confusion. Default loads all 7.
 
-Role-based examples:
-
-| Role | `AZURE_DEVOPS_ENABLED_DOMAINS` |
-|------|--------------------------------|
+| Role | Domains |
+|------|---------|
 | Project manager | `work_items,convenience,wiki` |
 | Developer (TFVC) | `work_items,tfvc,pipelines,convenience` |
 | Developer (Git) | `work_items,git,pipelines,convenience` |
@@ -198,110 +123,187 @@ Role-based examples:
 | DevOps / release | `work_items,pipelines,git,tfvc` |
 | Read-only / analyst | `work_items,wiki,convenience` |
 
-Unknown domain names cause the server to fail at startup, so typos surface immediately rather than silently dropping tools. Leave the variable unset (or empty) to load all 7 domains.
-
-The startup log reports which domains were enabled and disabled, e.g.:
+Unknown domain names fail at startup — no silent typos. Startup log reports what loaded:
 
 ```
 Enabled domains (4/7): work_items, tfvc, pipelines, convenience
 Disabled domains: git, wiki, test_plans
 ```
 
+---
+
+## TFVC support
+
+**The reason this server exists.** Cloud Azure DevOps disabled new TFVC repos in February 2017, and Microsoft's official MCP server doesn't cover TFVC. If your team is still on Team Foundation Version Control, this is the only MCP server that exposes it natively to AI assistants.
+
+11 dedicated TFVC tools:
+
+- **Shelvesets** — `tfvc_list_shelvesets`, `tfvc_get_shelveset` (with file changes + work item links)
+- **Changesets** — `tfvc_list_changesets`, `tfvc_get_changeset`, `tfvc_get_changeset_changes`, `tfvc_get_changeset_work_items`
+- **Browse & files** — `tfvc_browse`, `tfvc_get_file` (at any changeset version)
+- **Labels** — `tfvc_list_labels`
+- **Branches** — `tfvc_list_branches` (with children, including deleted)
+- **Work-item linkage** — `get_work_item_changesets` (all TFVC changesets touching a work item, with file contents)
+
+Filters accept `@me` where relevant. Requires Code (read & write) PAT scope.
+
+---
+
+## Profile-based secrets
+
+`mcp.json` configs sync to the cloud (Claude Desktop, VS Code Settings Sync), get pasted into tickets, end up in dotfile repos. **Inlining `AZURE_DEVOPS_PAT` there is one `git add .` away from a public leak.**
+
+The convention: set `AZURE_DEVOPS_PROFILE=name` in `mcp.json`, keep credentials in a gitignored `.env.<name>` next to the binary. The server resolves the profile name to that file path; `mcp.json` stays free of secrets and is safe to commit.
+
+`.env.product-a` (gitignored):
+
+```env
+AZURE_DEVOPS_ORG_URL=https://tfs-1.example.com/tfs/ProductACollection
+AZURE_DEVOPS_PROJECT=Product A
+AZURE_DEVOPS_PAT=<pat-for-product-a>
+# Optional per-profile domain restriction
+AZURE_DEVOPS_ENABLED_DOMAINS=work_items,tfvc,pipelines,convenience
+```
+
+`mcp.json` (commitable):
+
+```json
+{
+  "mcpServers": {
+    "ado-product-a": {
+      "command": "node",
+      "args": ["/path/to/dist/index.js"],
+      "env": { "AZURE_DEVOPS_PROFILE": "product-a" }
+    }
+  }
+}
+```
+
+### Multi-instance
+
+Once profiles are in place, running multiple ADO instances side-by-side is just adding entries. Each one loads its own `.env.<profile>` — own PAT, own project, own domain restriction. Per-process state means audit logs, rate limit counters, and `@me` identity caches never cross between tenants.
+
+```json
+{
+  "mcpServers": {
+    "ado-product-a": {
+      "command": "node",
+      "args": ["/path/to/dist/index.js"],
+      "env": { "AZURE_DEVOPS_PROFILE": "product-a" }
+    },
+    "ado-product-b": {
+      "command": "node",
+      "args": ["/path/to/dist/index.js"],
+      "env": { "AZURE_DEVOPS_PROFILE": "product-b" }
+    }
+  }
+}
+```
+
+Tool names auto-prefix per server — `mcp__ado-product-a__list_repositories` vs `mcp__ado-product-b__list_repositories`.
+
+### Env file precedence
+
+| Set in `mcp.json` | File loaded |
+|-------------------|-------------|
+| `AZURE_DEVOPS_ENV_FILE=/abs/path` | That exact path |
+| `AZURE_DEVOPS_PROFILE=name` | `<projectRoot>/.env.name` |
+| _(neither)_ | `<projectRoot>/.env` |
+
+Variables set directly in `mcp.json`'s `env` block always win over file contents.
+
+Each instance's startup log line `env file: ...` confirms which file was loaded — handy for debugging "which profile did this tool actually call?".
+
+---
+
 ## Write Safety
 
-Five layers, all on by default except the last three opt-ins:
+Six layers. The LLM cannot bypass the server-side ones — they short-circuit before any API call fires.
 
-| Layer | Scope | How to enable |
-|-------|-------|---------------|
-| **MCP annotations** | All 48 tools (`readOnlyHint`/`destructiveHint`/`idempotentHint`/`openWorldHint`) — clients can skip confirmation on reads, render warnings on destructive writes | Always on |
-| **Confirmation directive** | Every write's `description` instructs the LLM to show the payload and ask before calling | Always on |
-| **Readonly mode** | Server-level kill switch — all 7 write tools refuse to execute with a clear error; reads unaffected | `AZURE_DEVOPS_MODE=readonly` |
-| **Dry-run preview** | `add_work_item_comment`, `create_pull_request`, `queue_build` — pass `dryRun: true` to get the literal API payload back without calling | Per-call |
-| **Audit log** | JSONL append per write call (timestamp, tool, user, input, result, dryRun, ok, durationMs); blocked-by-readonly attempts are also recorded | `AZURE_DEVOPS_AUDIT_LOG=/path/to/audit.jsonl` |
+| Layer | Scope | Enable |
+|-------|-------|--------|
+| **MCP annotations** | All 49 tools tagged with `readOnlyHint` / `destructiveHint` / `idempotentHint` — clients can skip read confirmations, warn on destructive writes | Always on |
+| **Confirmation directive** | Every write's description tells the LLM to show payload and ask before calling | Always on |
+| **Readonly mode** | Server refuses all 7 write tools with a clear error; reads unaffected. CI, demos, sandbox, emergency stop | `AZURE_DEVOPS_MODE=readonly` |
+| **Rate limit** | Global sliding 60s window across all writes — runaway-loop fence, not a throughput regulator | `AZURE_DEVOPS_RATE_LIMIT_WRITES_PER_MIN=10` (default; `0` disables) |
+| **Dry-run** | `add_work_item_comment`, `create_pull_request`, `queue_build` — pass `dryRun: true` for the literal API payload without firing | Per-call |
+| **Audit log** | JSONL append per write: timestamp, tool, user, input, result, `dryRun`, `ok`, `durationMs`, `blocked` reason | `AZURE_DEVOPS_AUDIT_LOG=/path/to/audit.jsonl` |
 
-**Readonly mode:** set `AZURE_DEVOPS_MODE=readonly` for CI runs, demos, onboarding, or any deployment where writes shouldn't happen. The LLM cannot bypass it — every write tool short-circuits to `isError: true` before any API call. Leave unset (or set to `write`) for normal operation.
+**Audit privacy:** add `AZURE_DEVOPS_AUDIT_REDACT=1` to keep numeric IDs and field shape but drop all string values (titles, comments, branch names). Useful when work-item content carries classified data.
 
-**Audit privacy:** set `AZURE_DEVOPS_AUDIT_REDACT=1` to keep only numeric IDs and key shape, dropping all string values.
+Plus baseline hardening: WIQL injection sanitization, scrubbed errors (no internal paths/URLs/stack traces in client output), bounded pagination (1-1000).
 
-## Privacy & Data Flow
+---
 
-**This server runs entirely locally.** TFS API calls go directly from your machine to your Azure DevOps Server over your network. No data — work items, code, PATs, anything — is sent to the package author or any third-party service.
+## Privacy & data flow
 
-The only external destinations are:
+The server runs entirely locally. ADO API calls go straight from your machine to your Azure DevOps Server. No telemetry, no phone-home, no cloud proxy, no shared analytics.
 
-1. **Your own Azure DevOps Server** — the URL you configure in `.env`.
-2. **Your chosen AI assistant** (Claude, GitHub Copilot, Cursor) — the AI client reads tool outputs as conversation context per its own privacy policy. The MCP server itself never talks to these services; the AI client does.
+External destinations are limited to:
 
-There is **no telemetry, no phone-home, no cloud proxy, no shared analytics**. You can verify this claim by reading [`src/`](src/) — every network call goes through `azure-devops-node-api` pointed at your configured URL.
+1. **Your Azure DevOps Server** — the URL in your `.env`.
+2. **Your AI assistant** (Claude, GitHub Copilot, Cursor) — the AI client reads tool outputs as conversation context per its own privacy policy. The MCP server itself never talks to these services.
 
 | Data | Leaves your machine? |
-|------|----------------------|
-| PAT | ❌ Never — stored in gitignored `.env`, read only by the local server process |
-| Work items, code, commits, shelvesets | ➡ Only to your configured Azure DevOps Server, then back to the AI assistant the user chose |
-| Server/URL/project names | ➡ Only to the AI assistant as part of tool outputs |
-| Usage metrics, error logs | ❌ No collection — errors are scrubbed and returned to the client only |
+|------|---------------------|
+| PAT | ❌ Never — stays in gitignored `.env` / `.env.<profile>` |
+| Work items, code, commits, shelvesets | ➡ Your ADO Server, then back to your AI assistant |
+| Server / URL / project names | ➡ Your AI assistant as part of tool outputs |
+| Usage metrics, error logs | ❌ No collection |
 
-## Prerequisites
+Every network call is visible in [`src/`](src/) — they all route through `azure-devops-node-api` pointed at your configured URL.
 
-- **Node.js** >= 18 (required for both Quick Start and Enterprise Setup).
-- **Azure DevOps Server 2022.2 on-premises** (tested). Older TFS versions with REST API 7.x likely work but are untested.
-- **Personal Access Token (PAT)** with the scopes listed below.
+---
 
-### PAT scopes
+## Cloud (Azure DevOps Services)
 
-Grant only what you need. Omit scopes for domains you don't plan to use — the affected tools will fail at call time, but the server will still start.
+Technically works against `dev.azure.com`, but **this server isn't positioned for cloud**:
 
-| Scope | Permission | Required for |
-|-------|-----------|---------|
-| **Work Items** | Read & Write | Work item tools, convenience tools, WIQL queries |
-| **Code** | Read & Write | Git tools, **TFVC tools** (shelvesets, changesets, labels), PR creation |
-| **Build** | Read & Execute | Pipeline tools, `queue_build` |
-| **Release** | Read | Release listing |
-| **Test Management** | Read | Test plans, suites, runs, results |
-| **Wiki** | Read & Write | Wiki tools (page fetch, search, stats) |
+- **TFVC doesn't exist on cloud** — disabled for new orgs since February 2017.
+- **PAT-only auth** — many cloud tenants require Microsoft Entra ID, which this server doesn't yet support.
+- **Microsoft ships [`@azure-devops/mcp`](https://github.com/microsoft/azure-devops-mcp)** for cloud — officially maintained, Entra ID, broader cloud-specific coverage.
 
-### How to create a PAT
+Use this server against cloud only if you specifically need `@me`, profile-based multi-tenant config, or a convenience tool the official server lacks.
 
-1. Open your Azure DevOps Server / TFS web UI.
-2. Profile icon (top-right) → **Security** → **Personal access tokens** → **New Token**.
-3. Name it (e.g. `Azure_DevOps_MCP_Server`).
-4. Check the scopes from the table above.
-5. Set an **expiration ≤ 90 days** and rotate regularly.
-6. Copy the token immediately — it's only shown once. Paste it into your `.env` file.
+---
 
-## Quick Start (For Individuals)
+## Setup
 
-No cloning, no build — run straight from npm. Takes about 2 minutes end-to-end.
+Pick one path:
+- **[Quick Start](#quick-start-npm)** — run from npm, no clone. ~2 minutes.
+- **[Enterprise Setup](#enterprise-setup-clone)** — clone, build, pin a commit. For air-gapped or audited environments.
 
-> **No public npm access?** If your network or organization blocks the public npm registry, skip this section and follow [Enterprise Setup](#enterprise-setup-for-teams) instead — it builds from source and only needs `npm install` (which can use an internal mirror if configured).
+### Prerequisites
 
-**1. Get a PAT** from your Azure DevOps Server with the scopes in [Prerequisites](#prerequisites).
+- **Node.js ≥ 18**
+- **Azure DevOps Server 2022.2** (tested; older versions with REST API 7.x likely work but untested)
+- **PAT** with the scopes below. Grant only what you need — omitted scopes make the affected tools fail at call time, but the server still starts.
 
-**2. Create a credential file** somewhere under your home folder — e.g. `~/.azure-devops-mcp.env` (Linux/macOS) or `C:\Users\you\.azure-devops-mcp.env` (Windows):
+| Scope | For |
+|-------|-----|
+| Work Items (read & write) | Work item tools, convenience tools, WIQL queries |
+| Code (read & write) | Git tools, **TFVC tools**, PR creation |
+| Build (read & execute) | Pipeline tools, `queue_build` |
+| Release (read) | Release listing |
+| Test Management (read) | Test plans, suites, runs, results |
+| Wiki (read & write) | Wiki tools |
+
+Create the PAT at `https://<your-tfs>/_usersSettings/tokens`. Set an expiration ≤ 90 days and rotate regularly.
+
+### Quick Start (npm)
+
+> **No public npm access?** Skip to [Enterprise Setup](#enterprise-setup-clone) — it builds from source and can use an internal npm mirror.
+
+**1. Credential file** — create `~/.azure-devops-mcp.env` (Linux/macOS) or `C:\Users\you\.azure-devops-mcp.env` (Windows):
 
 ```env
 AZURE_DEVOPS_ORG_URL=https://your-tfs-server/tfs/YourCollection
 AZURE_DEVOPS_PROJECT=YourProjectName
 AZURE_DEVOPS_PAT=your_pat_token
 # AZURE_DEVOPS_SSL_IGNORE=true   # uncomment for self-signed certs
-
-# Optional: load only the tool domains you need (smaller AI tool list,
-# fewer mis-selections). Leave unset to load all 7 domains.
-# Valid: work_items, git, tfvc, pipelines, wiki, test_plans, convenience
-# AZURE_DEVOPS_ENABLED_DOMAINS=work_items,tfvc,pipelines,convenience
 ```
 
-Lock it so only you can read it:
-
-```bash
-# Linux / macOS
-chmod 600 ~/.azure-devops-mcp.env
-
-# Windows (PowerShell or bash)
-icacls "%USERPROFILE%\.azure-devops-mcp.env" /inheritance:r /grant:r "%USERNAME%:R"
-```
-
-**3. Register the server with your AI client.** Pick the shortest path for your setup:
+**2. Register with your AI client.** Shortest paths:
 
 #### VS Code — one-click install
 
@@ -311,19 +313,64 @@ icacls "%USERPROFILE%\.azure-devops-mcp.env" /inheritance:r /grant:r "%USERNAME%
   </a>
 </p>
 
-Click → VS Code opens with the config pre-filled → confirm. Works for VS Code 1.90+ with GitHub Copilot (Agent mode) or any MCP extension.
-
-#### Claude Code (CLI) — one command
+#### Claude Code — one command
 
 ```bash
 claude mcp add azure-devops -- npx -y @burcusg/azure-devops-mcp-onprem --env AZURE_DEVOPS_ENV_FILE=$HOME/.azure-devops-mcp.env
 ```
 
-No JSON editing required.
+#### Other clients (Claude Desktop / Cursor / Antigravity / Codex CLI)
 
-#### Claude Desktop / Cursor / other clients — JSON config
+JSON config — see [Configure AI client](#configure-ai-client) below.
 
-Edit your client's MCP config file (Claude Desktop: `%APPDATA%\Claude\claude_desktop_config.json` on Windows or `~/Library/Application Support/Claude/claude_desktop_config.json` on macOS):
+### Enterprise Setup (clone)
+
+```bash
+git clone https://github.com/burcusipahioglu/azure-devops-mcp-onprem.git
+cd azure-devops-mcp-onprem
+npm install
+npm run build
+cp .env.example .env       # copy .env.example .env on Windows
+# fill in .env with your TFS details
+npm start                  # smoke-test the connection — Ctrl+C to stop
+```
+
+Expected stderr on startup:
+
+```
+Azure DevOps MCP Server "CompanyOrg" running on stdio
+env file: /path/to/.env
+Authenticated as: Your Name (your.email@company.com)
+```
+
+Then point your AI client at `dist/index.js` (see below). No `env` block needed — the server reads `.env` from the repo root.
+
+### Configure AI client
+
+> ⚠ **Never inline `AZURE_DEVOPS_PAT` / `AZURE_DEVOPS_ORG_URL` / `AZURE_DEVOPS_PROJECT` in client configs.** Client configs sync to the cloud (Claude Desktop sync, VS Code Settings Sync) or get pasted into tickets. Use `AZURE_DEVOPS_ENV_FILE` (Quick Start) or `.env` in the repo (Enterprise Setup). For multiple TFS instances see [Profile-based secrets](#profile-based-secrets).
+
+| Client | Path |
+|--------|------|
+| **VS Code** | Includes `.vscode/mcp.json`. Copilot Chat → Agent mode (`Ctrl+Shift+I`) |
+| **GitHub Copilot CLI** | `/mcp add` (interactive) or edit `~/.copilot/mcp-config.json` |
+| **Claude Code** | `claude mcp add azure-devops -- node /path/to/dist/index.js` |
+| **Claude Desktop** | Edit `%APPDATA%\Claude\claude_desktop_config.json` (Windows) / `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) |
+| **Cursor / Antigravity / Codex CLI** | Standard MCP JSON config — same shape as Claude Desktop |
+
+Enterprise Setup config template (any client):
+
+```json
+{
+  "mcpServers": {
+    "azure-devops": {
+      "command": "node",
+      "args": ["/absolute/path/to/azure-devops-mcp-onprem/dist/index.js"]
+    }
+  }
+}
+```
+
+Quick Start config template (npm + credential file):
 
 ```json
 {
@@ -339,353 +386,9 @@ Edit your client's MCP config file (Claude Desktop: `%APPDATA%\Claude\claude_des
 }
 ```
 
-Restart the client. All 48 tools appear in the tool picker. First `npx` run downloads the package (~60 seconds); subsequent runs are instant from the cache.
-
-> **Why no PAT in the config file?** Client configs sync to the cloud (Claude Desktop sync, VS Code Settings Sync) or get pasted into tickets. Keep credentials in the OS file; the server reads them via `AZURE_DEVOPS_ENV_FILE`.
+Restart the client. All 49 tools appear in the tool picker. Server name is auto-detected from `AZURE_DEVOPS_ORG_URL` (e.g. `https://dev.azure.com/acme` → `acme`); override with `AZURE_DEVOPS_SERVER_NAME`.
 
 ---
-
-## Enterprise Setup (For Teams)
-
-Use this path if you want to pin a specific commit, audit the code, add custom tools, or run offline without npm network access.
-
-### Step 1: Clone and Install
-
-```bash
-git clone https://github.com/burcusipahioglu/azure-devops-mcp-onprem.git
-cd azure-devops-mcp-onprem
-npm install
-```
-
-✅ Expected: No errors, `node_modules/` created.
-
-### Step 2: Build TypeScript
-
-```bash
-npm run build
-```
-
-✅ Expected: No TypeScript errors, `dist/` folder populated.
-
-### Step 3: Configure credentials
-
-Copy the template:
-
-**Windows:**
-```cmd
-copy .env.example .env
-```
-
-**macOS / Linux:**
-```bash
-cp .env.example .env
-```
-
-Fill in `.env` with your Azure DevOps details:
-
-```env
-AZURE_DEVOPS_ORG_URL=https://your-tfs-server/tfs/YourCollection
-AZURE_DEVOPS_PROJECT=YourProjectName
-AZURE_DEVOPS_PAT=your_pat_token
-# AZURE_DEVOPS_SERVER_NAME=CustomDisplayName   # optional, auto-derived from URL
-# AZURE_DEVOPS_SSL_IGNORE=true                 # only for self-signed certs
-
-# Optional: restrict tool domains (see "Restrict which tool domains load" above).
-# Leave unset to load all 7 domains.
-# AZURE_DEVOPS_ENABLED_DOMAINS=work_items,tfvc,pipelines,convenience
-```
-
-**Server name auto-detection** (displayed by the AI client):
-- `https://dev.azure.com/acme` → `acme`
-- `https://tfs.example.com/tfs/CompanyOrg` → `CompanyOrg`
-- Override with `AZURE_DEVOPS_SERVER_NAME`
-
-**On-Premises configuration notes:**
-
-| Topic | Detail |
-|-------|--------|
-| **Org URL** | Must be the collection URL: `https://server/tfs/{collection}` (no project segment) |
-| **Project name** | Passed separately; spaces are handled by the SDK (`MyProject`, not `MyProject%20Name`) |
-| **SSL** | Set `AZURE_DEVOPS_SSL_IGNORE=true` for self-signed or corporate CA certificates |
-| **API version** | Azure DevOps Server 2022.2 uses REST API ~7.1, compatible with `azure-devops-node-api` v14.x |
-
-**`.env` is gitignored** and will not be committed. For multiple TFS instances, see [Multi-Instance Setup](#multi-instance-setup).
-
-### Step 4: Verify
-
-```bash
-npm start
-```
-
-Expected startup output (to stderr):
-
-```
-Azure DevOps MCP Server "CompanyOrg" running on stdio
-env file: /path/to/.env
-Authenticated as: Your Name (your.email@company.com)
-```
-
-Stop with `Ctrl+C`.
-
-### Step 5: Point your AI client at `dist/index.js`
-
-```json
-{
-  "mcpServers": {
-    "azure-devops": {
-      "command": "node",
-      "args": ["/absolute/path/to/azure-devops-mcp-onprem/dist/index.js"]
-    }
-  }
-}
-```
-
-No `env` block needed — the server loads `.env` from the repo root.
-
----
-
-## Configure Your AI Assistant
-
-The examples below show configs for each major MCP client. Pick the style that matches your setup path:
-
-- **Quick Start path** → `command: "npx"` + `AZURE_DEVOPS_ENV_FILE` pointing to your credential file.
-- **Enterprise Setup path** → `command: "node"` pointing at `dist/index.js`, with `.env` in the repo root (no `env` block needed in `mcp.json`).
-
-> **⚠ Never inline `AZURE_DEVOPS_PAT` / `AZURE_DEVOPS_ORG_URL` / `AZURE_DEVOPS_PROJECT` in the client config.** These files sync to the cloud (Claude Desktop sync, VS Code Settings Sync) or get pasted into tickets. Use `AZURE_DEVOPS_ENV_FILE` for Quick Start, or `.env` in the repo for Enterprise Setup. For multiple TFS instances, see [Multi-Instance Setup](#multi-instance-setup).
-
-#### Visual Studio 2022 (17.14+)
-
-The project includes `.mcp.json` in the root — VS 2022 picks it up automatically when you open the solution/folder. No extra setup needed.
-
-1. Open the project folder or solution in VS 2022
-2. Open Copilot Chat (`Ctrl+\, Ctrl+C`)
-3. Select **Agent** mode
-4. The Azure DevOps tools appear automatically
-
-> **Requirement:** Visual Studio 2022 version 17.14 or later with GitHub Copilot extension.
-
-If you prefer manual configuration, add to `<SolutionDir>\.mcp.json`:
-
-```json
-{
-  "servers": {
-    "azure-devops": {
-      "type": "stdio",
-      "command": "node",
-      "args": ["dist/index.js"]
-    }
-  }
-}
-```
-
-#### VS Code
-
-The project includes `.vscode/mcp.json`. Open Copilot Chat (`Ctrl+Shift+I`), select **Agent** mode, and start asking questions.
-
-#### GitHub Copilot CLI
-
-```bash
-# Interactive — prompts for command, args, and env vars
-/mcp add
-
-# Or edit the config file directly
-# Windows: %USERPROFILE%\.copilot\mcp-config.json
-# macOS/Linux: ~/.copilot/mcp-config.json
-```
-
-Config file format (`mcp-config.json`):
-
-```json
-{
-  "servers": {
-    "azure-devops": {
-      "type": "stdio",
-      "command": "node",
-      "args": ["C:\\path\\to\\azure-devops-mcp-onprem\\dist\\index.js"]
-    }
-  }
-}
-```
-
-Useful commands inside Copilot CLI:
-- `/mcp show` — list all configured servers
-- `/mcp edit azure-devops` — modify server config
-- `/mcp disable azure-devops` / `/mcp enable azure-devops` — toggle on/off
-- `/mcp delete azure-devops` — remove
-
-#### Claude Code (CLI)
-
-```bash
-claude mcp add azure-devops -- node /path/to/azure-devops-mcp-onprem/dist/index.js
-```
-
-#### Claude Desktop
-
-Add to `%APPDATA%\Claude\claude_desktop_config.json` (Windows) or `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS).
-
-**Secrets stay in `.env`** (from [Enterprise Setup Step 3](#step-3-configure-credentials)). The client config only points at the server binary:
-
-**Windows:**
-```json
-{
-  "mcpServers": {
-    "azure-devops": {
-      "command": "node",
-      "args": ["C:\\path\\to\\azure-devops-mcp-onprem\\dist\\index.js"]
-    }
-  }
-}
-```
-
-**macOS / Linux:**
-```json
-{
-  "mcpServers": {
-    "azure-devops": {
-      "command": "node",
-      "args": ["/path/to/azure-devops-mcp-onprem/dist/index.js"]
-    }
-  }
-}
-```
-
-> Do **not** put `AZURE_DEVOPS_PAT` / `AZURE_DEVOPS_ORG_URL` / `AZURE_DEVOPS_PROJECT` under an `env` block here. The server reads them from the gitignored `.env` file automatically.
-
-**Server name:** Auto-detected from `AZURE_DEVOPS_ORG_URL` in `.env`:
-- `https://dev.azure.com/acme` → server name = `acme`
-- `https://my-tfs.company.com/tfs/MyOrg` → server name = `MyOrg`
-- Override by setting `AZURE_DEVOPS_SERVER_NAME` in `.env`.
-
-After saving:
-1. Restart Claude Desktop
-2. Look for the 🔧 icon — it should show your server name, and the tools appear in the tool picker.
-
-## Multi-Instance Setup
-
-The same server binary can run as multiple instances to connect to different Azure DevOps organizations/projects simultaneously.
-
-**Principle:** keep secrets (`AZURE_DEVOPS_PAT`, URL, project) in gitignored `.env.<profile>` files. The MCP client config only references the profile name — no secrets committed to `mcp.json`.
-
-### How .env loading works
-
-At startup, the server picks an env file using this precedence:
-
-| Env var set in mcp.json | File loaded |
-|--------------------------|-------------|
-| `AZURE_DEVOPS_ENV_FILE=/abs/or/rel/path` | That exact path |
-| `AZURE_DEVOPS_PROFILE=product-a` | `<projectRoot>/.env.product-a` |
-| _(none)_ | `<projectRoot>/.env` (single-instance default) |
-
-Variables already present in `process.env` always win — so anything you put directly in the mcp.json `env` block overrides the file.
-
-### Recommended pattern: one .env per profile
-
-Create files next to `.env`:
-
-```
-Azure_DevOps_MCP_Server/
-  .env.product-a    # gitignored — PAT, URL, project for Product A's TFS
-  .env.product-b    # gitignored — PAT, URL, project for Product B's TFS
-  .env.example      # committed — template
-```
-
-`.env.product-a`:
-
-```env
-AZURE_DEVOPS_ORG_URL=https://tfs-1.example.com/tfs/ProductACollection
-AZURE_DEVOPS_PROJECT=Product A
-AZURE_DEVOPS_PAT=<pat-for-product-a>
-AZURE_DEVOPS_SSL_IGNORE=false
-# Per-profile domain restriction — e.g. Product A only needs Git + work items
-# AZURE_DEVOPS_ENABLED_DOMAINS=work_items,git,pipelines,convenience
-```
-
-`mcp.json` — secrets-free, safe to commit:
-
-```json
-{
-  "mcpServers": {
-    "azure-devops-product-a": {
-      "command": "node",
-      "args": ["/path/to/dist/index.js"],
-      "env": {
-        "AZURE_DEVOPS_PROFILE": "product-a",
-        "AZURE_DEVOPS_SERVER_NAME": "azure-devops-product-a"
-      }
-    },
-    "azure-devops-product-b": {
-      "command": "node",
-      "args": ["/path/to/dist/index.js"],
-      "env": {
-        "AZURE_DEVOPS_PROFILE": "product-b",
-        "AZURE_DEVOPS_SERVER_NAME": "azure-devops-product-b"
-      }
-    }
-  }
-}
-```
-
-Tool names are automatically prefixed by the MCP framework:
-- `mcp__azure-devops-product-a__list_repositories`
-- `mcp__azure-devops-product-b__list_repositories`
-
-At startup the server logs which env file it loaded, e.g.:
-
-```
-Azure DevOps MCP Server "azure-devops-product-a" running on stdio
-env file: /path/to/.env.product-a
-Authenticated as: ...
-```
-
-### Alternative: explicit file path
-
-If your .env files live outside the project directory (e.g. a shared secrets folder):
-
-```json
-"env": {
-  "AZURE_DEVOPS_ENV_FILE": "C:/secrets/tfs-product-a.env",
-  "AZURE_DEVOPS_SERVER_NAME": "azure-devops-product-a"
-}
-```
-
-### Secrets hygiene
-
-- **Do not inline secrets in `mcp.json`.** Client configs often sync to the cloud (Claude Desktop sync, VS Code Settings Sync, dotfile repos) or get pasted into tickets/chat. Any `AZURE_DEVOPS_PAT` in those files is one `git add .` away from a public leak.
-- **Use `.env.<profile>` files instead.** `.gitignore` covers `.env` and `.env.*` (except `.env.example`) — profile files never land in a commit.
-- **One PAT per TFS instance**, each with its own minimum scope set. Rotate on a 90-day cadence.
-- **If a PAT was ever committed** (check `git log -p -S "AZURE_DEVOPS_PAT="`), revoke it at `https://<your-tfs>/_usersSettings/tokens` immediately — history rewrites miss mirrors, revocation is the only reliable remediation.
-- **Restrict file permissions** (optional, recommended on shared machines):
-  - **Linux / macOS:** `chmod 600 .env .env.*` — owner read/write only.
-  - **Windows (PowerShell or bash):** `icacls .env /inheritance:r /grant:r "%USERNAME%:R"` (repeat for each `.env.<profile>`) — removes inherited ACLs, grants read-only access to the current user.
-
-## Project Structure
-
-```
-src/
-  config.ts                  Config interface + loadConfig() — reads env vars, validates AZURE_DEVOPS_ENABLED_DOMAINS
-  constants.ts               Batch sizes, truncation limits, pagination thresholds
-  index.ts                   Entry point — resolves env file, loads config, registers tool modules per enabled domain
-  connection/
-    provider.ts              IConnectionProvider + AzureDevOpsConnectionProvider — PAT auth, lazy WebApi connection, cached user identity
-    context-types.ts         Per-API context types (WorkItemContext, GitContext, TfvcContext, BuildContext, ReleaseContext, TestContext, TestPlanContext, WikiContext)
-  utils/
-    tool-response.ts         withErrorHandling() — centralized error handling + error sanitization
-    wiql.ts                  sanitizeWiqlValue() — WIQL injection prevention
-    schemas.ts               topParam() / skipParam() — shared input validation schemas
-    work-item-helpers.ts     extractDisplayValue() / batchGetWorkItems() — shared helpers
-    me-resolver.ts           resolveMe() — expands '@me' token to current user's display name
-    patch-document.ts        normalizeFieldPath() / buildUpdatePatchDocument() — JsonPatch helpers for work-item updates
-  tools/
-    work-items.ts            7 tools — WIQL queries, CRUD, comments, links
-    work-items-advanced.ts   2 tools — change history, bulk update with before/after report
-    git.ts                   6 tools — repos, branches, file content, pull requests
-    git-advanced.ts          3 tools — commit history, commit changes, branch comparison
-    pipelines.ts             5 tools — build definitions, builds, releases
-    tfvc.ts                  11 tools — browse, files, changesets, shelvesets, labels, branches, work-item changesets
-    convenience.ts           4 tools — sprint items, tag search, statistics, current user
-    test-management.ts       6 tools — test plans, suites, cases, runs, results
-    wiki.ts                  5 tools — list wikis, pages, browse, stats, search
-```
 
 ## Tool Reference
 
@@ -741,7 +444,7 @@ src/
 | `tfvc_list_shelvesets` | List shelvesets (sorted newest-first) | `owner` (accepts `@me`), `top` |
 | `tfvc_get_shelveset` | Get shelveset details + changes | `shelvesetId`, `includeWorkItems` |
 | `tfvc_list_labels` | List TFVC labels | `name`, `owner` (accepts `@me`), `top` |
-| `get_work_item_changesets` | Get all TFVC changesets linked to a work item (with file changes) | `workItemId`, `includeFileContent`, `maxFiles` |
+| `get_work_item_changesets` | All TFVC changesets linked to a work item (with file changes) | `workItemId`, `includeFileContent`, `maxFiles` |
 
 ### Pipelines (5 tools)
 
@@ -783,13 +486,13 @@ src/
 | `get_wiki_page_stats` | Page view statistics | `wikiIdentifier`, `pageId`, `pageViewsForDays` |
 | `search_wiki_pages` | Batch fetch pages with view stats | `wikiIdentifier`, `top` |
 
-## Current User (@me)
+---
 
-Several filter parameters accept the magic token `@me` — the server resolves it to the authenticated PAT owner's display name via Azure DevOps `ConnectionData` API. The identity is cached for the lifetime of the process.
+## `@me` token
 
-**Why:** In multi-agent setups, sub-agents rarely know the human's display name. Passing `@me` lets any agent filter to "my stuff" without needing identity context.
+Several filter parameters accept the magic token `@me` — the server resolves it to the authenticated PAT owner's display name via Azure DevOps `ConnectionData`. The identity is cached for the lifetime of the process.
 
-**Supported parameters:**
+**Why:** in multi-agent setups, sub-agents rarely know the human's display name. `@me` lets any agent filter to "my stuff" without needing identity context.
 
 | Tool | Parameter |
 |------|-----------|
@@ -799,10 +502,6 @@ Several filter parameters accept the magic token `@me` — the server resolves i
 | `list_commits` | `author` |
 | `create_work_item` | `assignedTo` |
 
-Need the identity explicitly? Call `get_current_user` — returns `{ displayName, id, uniqueName }`.
-
-Example:
-
 ```jsonc
 // "Show me my latest shelveset"
 tfvc_list_shelvesets({ owner: "@me", top: 1 })
@@ -811,48 +510,24 @@ tfvc_list_shelvesets({ owner: "@me", top: 1 })
 list_commits({ repositoryId: "my-repo", branch: "feature/login", author: "@me", fromDate: "2026-04-10" })
 ```
 
-> **Note:** WIQL queries (`query_work_items`, `get_my_sprint_items`) use Azure DevOps' native `@Me` macro — no server-side resolution needed.
+> WIQL queries (`query_work_items`, `get_my_sprint_items`) use Azure DevOps' native `@Me` macro — no server-side resolution needed.
 
-## Cloud (Azure DevOps Services) support
+Need the identity explicitly? Call `get_current_user`.
 
-Technically works — point `AZURE_DEVOPS_ORG_URL` at `https://dev.azure.com/<your-org>` and supply a PAT. Work Items, Git, Pipelines, Wiki, and Test Plans all function against cloud.
-
-However, this project is **not positioned for cloud use**:
-
-- **TFVC doesn't exist on cloud** — Microsoft disabled new TFVC repos for cloud organizations created after February 2017. The 11 TFVC tools are unused on cloud.
-- **PAT-only auth.** Many cloud tenants disable PAT in favor of Microsoft Entra ID OAuth. This server doesn't support Entra yet.
-- **Microsoft ships [`@azure-devops/mcp`](https://github.com/microsoft/azure-devops-mcp) for cloud** — officially maintained, Entra ID supported, broader tool coverage (code search, artifact download, PR threads, iteration/capacity).
-
-**Use this server on cloud** only if you specifically need the `@me` token, profile-based multi-tenant config, or one of the convenience tools that the official server lacks. For anything else, the official Microsoft package is the right default.
-
-## Security
-
-- **Local-only execution:** Data only leaves the machine to reach your configured Azure DevOps Server and your chosen AI assistant. No telemetry, analytics, or cloud proxy — see [Privacy & Data Flow](#privacy--data-flow) for the full data-destination table.
-- **PAT storage:** Credentials live in gitignored `.env` / `.env.<profile>` files — **never** in `mcp.json` / client configs. See [Secrets hygiene](#secrets-hygiene).
-- **WIQL injection prevention:** All user-supplied values are sanitized via `sanitizeWiqlValue()` before WIQL interpolation.
-- **Error message sanitization:** Internal paths, URLs, and stack traces are scrubbed before responses reach the client.
-- **Input validation:** `top` / `skip` parameters are bounded (1-1000) to prevent runaway API calls.
-- **Write operation safety:** All mutating tools carry confirmation warnings; bulk operations require explicit user approval before execution.
-- **Minimum scopes:** Grant each PAT only the scopes listed in [Prerequisites](#prerequisites).
-- **PAT expiration:** Set an expiry (90 days recommended) and rotate regularly.
-- **Tool confirmation:** GitHub Copilot and Claude prompt for user approval before each tool call.
-- **Dependencies:** All packages from verified publishers (Microsoft, Anthropic, established OSS). Run `npm audit` periodically.
+---
 
 ## Development
 
 ```bash
-# Watch mode (recompile on changes)
-npm run dev
-
-# Build once
-npm run build
-
-# Start server directly
-npm start
+npm run dev      # watch mode
+npm run build    # build once
+npm start        # start the server
 ```
+
+---
 
 ## License
 
 Released under the [MIT License](LICENSE). Copyright (c) 2026 Burcu Sipahioglu Gokbulut.
 
-You are free to use, modify, and redistribute this project for any purpose — commercial or personal — provided the copyright notice and license text are preserved. See the [LICENSE](LICENSE) file for the full text.
+Free to use, modify, and redistribute — commercial or personal — provided the copyright notice and license text are preserved.
