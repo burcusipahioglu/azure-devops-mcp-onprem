@@ -2,6 +2,7 @@ import { appendFileSync } from "node:fs";
 import type { IConnectionProvider } from "../connection/provider.js";
 import type { ToolResult } from "./tool-response.js";
 import { isReadonlyMode, readonlyBlockedResponse } from "./write-mode.js";
+import { tryConsume, rateLimitBlockedResponse } from "./rate-limit.js";
 
 // Read env vars lazily on each call — module top-level code runs BEFORE
 // index.ts's dotenv `loadEnv()` (ESM hoists imports), so capturing them at
@@ -106,6 +107,30 @@ export async function withAudit(
         dryRun: Boolean(input.dryRun),
         ok: false,
         blocked: "readonly_mode",
+        durationMs: 0,
+      };
+      const record = redactMode
+        ? { ...base, redacted: true, input: redactPayload(input) }
+        : { ...base, input };
+      writeAuditRecord(path, record);
+    }
+    return blocked;
+  }
+
+  const rl = tryConsume();
+  if (!rl.allowed) {
+    const blocked = rateLimitBlockedResponse(tool, rl);
+    if (path) {
+      const user = await resolveUser(provider);
+      const base = {
+        ts: new Date().toISOString(),
+        tool,
+        user,
+        dryRun: Boolean(input.dryRun),
+        ok: false,
+        blocked: "rate_limit",
+        limit: rl.limit,
+        retryAfterMs: rl.retryAfterMs,
         durationMs: 0,
       };
       const record = redactMode
