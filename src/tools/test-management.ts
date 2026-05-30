@@ -2,6 +2,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { IConnectionProvider } from "../connection/provider.js";
 import { withErrorHandling, jsonResponse } from "../utils/tool-response.js";
+import { withAudit } from "../utils/audit.js";
 import { topParam, skipParam } from "../utils/schemas.js";
 import { STACK_TRACE_TRUNCATION_LIMIT } from "../constants.js";
 
@@ -278,5 +279,56 @@ export function registerTestManagementTools(server: McpServer, provider: IConnec
 
         return jsonResponse(mapped);
       })
+  );
+
+  server.registerTool(
+    "add_test_cases_to_suite",
+    {
+      description:
+        "Add existing Test Case work items to a test suite. A Test Case is a work item (create it with create_work_item, type 'Test Case'); this tool links those work items into a suite so they appear in the plan. WARNING: This is a WRITE operation. Confirm the plan, suite, and test case IDs with the user before calling.",
+      annotations: { destructiveHint: false, idempotentHint: false, openWorldHint: true },
+      inputSchema: {
+        planId: z.number().describe("Test plan ID the suite belongs to"),
+        suiteId: z.number().describe("Test suite ID to add the test cases to"),
+        testCaseIds: z
+          .array(z.number())
+          .min(1)
+          .describe("Work item IDs of the Test Cases to add"),
+        configurationIds: z
+          .array(z.number())
+          .optional()
+          .describe("Optional test configuration IDs to assign to each added test case"),
+      },
+    },
+    (input) =>
+      withAudit(provider, "add_test_cases_to_suite", input, () =>
+        withErrorHandling(async () => {
+          const { planId, suiteId, testCaseIds, configurationIds } = input;
+          const { api, project } = await provider.getTestPlanContext();
+
+          const pointAssignments = configurationIds?.map((configurationId) => ({
+            configurationId,
+          }));
+
+          const params = testCaseIds.map((id) => ({
+            workItem: { id },
+            ...(pointAssignments ? { pointAssignments } : {}),
+          }));
+
+          const added = await api.addTestCasesToSuite(params, project, planId, suiteId);
+
+          return jsonResponse({
+            action: "ADDED",
+            planId,
+            suiteId,
+            requested: testCaseIds.length,
+            added: (added || []).map((tc) => ({
+              testCaseId: tc.workItem?.id,
+              title: tc.workItem?.name,
+              order: tc.order,
+            })),
+          });
+        })
+      )
   );
 }
