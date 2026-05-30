@@ -8,6 +8,7 @@ import type { IConnectionProvider } from "../connection/provider.js";
 import { withErrorHandling, jsonResponse, textResponse, dryRunResponse } from "../utils/tool-response.js";
 import { topParam, dryRunParam } from "../utils/schemas.js";
 import { withAudit } from "../utils/audit.js";
+import { FILE_CONTENT_TRUNCATION_LIMIT } from "../constants.js";
 
 export function registerGitTools(server: McpServer, provider: IConnectionProvider): void {
   server.registerTool(
@@ -73,9 +74,13 @@ export function registerGitTools(server: McpServer, provider: IConnectionProvide
           .string()
           .optional()
           .describe("Branch name (defaults to default branch)"),
+        maxBytes: z
+          .number()
+          .optional()
+          .describe("Truncate file content to this many characters (default uses FILE_CONTENT_TRUNCATION_LIMIT)"),
       },
     },
-    ({ repositoryId, path, branch }) =>
+    ({ repositoryId, path, branch, maxBytes }) =>
       withErrorHandling(async () => {
         const { api, project } = await provider.getGitContext();
 
@@ -108,7 +113,13 @@ export function registerGitTools(server: McpServer, provider: IConnectionProvide
         }
         const content = Buffer.concat(chunks).toString("utf-8");
 
-        return textResponse(content);
+        const limit = maxBytes ?? FILE_CONTENT_TRUNCATION_LIMIT;
+        const output =
+          content.length > limit
+            ? content.substring(0, limit) + "\n... [truncated, file too large]"
+            : content;
+
+        return textResponse(output);
       })
   );
 

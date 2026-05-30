@@ -44,35 +44,28 @@ import { registerGitAdvancedTools } from "./tools/git-advanced.js";
 import { registerWorkItemAdvancedTools } from "./tools/work-items-advanced.js";
 import { registerTestManagementTools } from "./tools/test-management.js";
 import { registerWikiTools } from "./tools/wiki.js";
+import { registerExternalResources } from "./resources/external.js";
 
 const config = loadConfig();
 const provider = new AzureDevOpsConnectionProvider(config);
 
+// Sent to the MCP client at handshake — guides AI behavior on cross-cutting
+// policy and conventions that don't fit cleanly in any single tool description.
+// Keep minimal; domain/tool coverage is discoverable via tools/list.
+const SERVER_INSTRUCTIONS = [
+  "Filter parameters (owner / author / assignedTo) accept the @me token, resolved per tenant.",
+  "",
+  "Write safety: every mutating tool short-circuits through an audit wrapper. AZURE_DEVOPS_MODE=readonly refuses all writes; a 10/min global rate limit and optional JSONL audit log apply.",
+].join("\n");
+
 const server = new McpServer(
+  { name: config.serverName, version: "1.3.0" },
   {
-    name: config.serverName,
-    version: "1.3.0",
-  },
-  {
-    instructions: [
-      "Azure DevOps MCP server for on-premises Azure DevOps Server (TFS 2022.2) and cloud (dev.azure.com). Tools span 7 domains:",
-      "",
-      "- Work Items (9): WIQL queries, CRUD, comments, history, bulk update, work-item linking.",
-      "- Git (9): repositories, branches, pull requests, commits, file content, branch comparison.",
-      "- TFVC (11): shelvesets, changesets, labels, branches, work-item linkage. The only MCP server with native TFVC tools.",
-      "- Pipelines (5): build definitions, queue builds, list builds and releases.",
-      "- Wiki (5): list wikis, browse, get pages, search, view stats.",
-      "- Test Plans (6): plans, suites, cases, runs, results.",
-      "- Convenience (4): sprint items, tag search, area-path statistics, current user identity.",
-      "",
-      "Filter parameters (owner / author / assignedTo) accept the @me token, resolved per tenant via ConnectionData.",
-      "",
-      "Write safety: every mutating tool short-circuits through an audit wrapper enforcing readonly mode (AZURE_DEVOPS_MODE=readonly), a global write rate limit (default 10/minute, sliding 60s window), optional JSONL audit log with redact mode, and dry-run preview on side-effect-heavy tools (add_work_item_comment, create_pull_request, queue_build). WIQL inputs are sanitized; errors are scrubbed of internal paths and stack traces.",
-      "",
-      "Multi-instance via AZURE_DEVOPS_PROFILE — each instance loads its own .env.<profile> with isolated PAT, project, and tool-domain restriction. Secrets stay out of cloud-synced mcp.json. Domain filtering via AZURE_DEVOPS_ENABLED_DOMAINS lets you load only the tool groups you need.",
-      "",
-      "Authenticates with a single PAT. No Microsoft account or Entra ID required.",
-    ].join("\n"),
+    capabilities: {
+      prompts: { listChanged: true },
+      resources: { listChanged: true },
+    },
+    instructions: SERVER_INSTRUCTIONS,
   }
 );
 
@@ -95,6 +88,17 @@ for (const domain of ALL_DOMAINS) {
   }
 }
 
+const loadedResources = registerExternalResources(server);
+
+type PromptRegister = (server: McpServer, provider: AzureDevOpsConnectionProvider) => void;
+
+const promptModules: Partial<Record<DomainName, PromptRegister[]>> = {};
+
+for (const domain of ALL_DOMAINS) {
+  if (!config.enabledDomains.has(domain)) continue;
+  for (const reg of promptModules[domain] ?? []) reg(server, provider);
+}
+
 async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
@@ -108,6 +112,9 @@ async function main() {
   const domainLine = `Enabled domains (${enabled.length}/${ALL_DOMAINS.length}): ${enabled.join(", ")}`;
   const disabledLine =
     disabled.length > 0 ? `Disabled domains: ${disabled.join(", ")}` : null;
+  const resourceLine = `External resources loaded: ${loadedResources.size}${
+    loadedResources.size > 0 ? ` (${[...loadedResources].join(", ")})` : ""
+  }`;
 
   try {
     const user = await provider.resolveCurrentUser();
@@ -115,12 +122,14 @@ async function main() {
     console.error(envSource);
     console.error(domainLine);
     if (disabledLine) console.error(disabledLine);
+    console.error(resourceLine);
     console.error(`Authenticated as: ${user.displayName} (${user.uniqueName})`);
   } catch {
     console.error(`Azure DevOps MCP Server "${config.serverName}" running on stdio`);
     console.error(envSource);
     console.error(domainLine);
     if (disabledLine) console.error(disabledLine);
+    console.error(resourceLine);
     console.error("Warning: Could not resolve current user identity");
   }
 }

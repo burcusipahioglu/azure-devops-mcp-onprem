@@ -3,11 +3,68 @@ import { z } from "zod";
 import {
   GitVersionType,
 } from "azure-devops-node-api/interfaces/GitInterfaces.js";
+import { WorkItemExpand } from "azure-devops-node-api/interfaces/WorkItemTrackingInterfaces.js";
 import type { IConnectionProvider } from "../connection/provider.js";
-import { withErrorHandling, jsonResponse } from "../utils/tool-response.js";
+import { withErrorHandling, jsonResponse, extractErrorMessage } from "../utils/tool-response.js";
 import { topParam, skipParam } from "../utils/schemas.js";
 import { SHORT_COMMIT_SHA_LENGTH } from "../constants.js";
 import { resolveMe } from "../utils/me-resolver.js";
+
+// Helpers: extract Git artifact refs from work item relations.
+// Git artifact URIs are repo-qualified (unlike TFVC):
+//   vstfs:///Git/Commit/<projectId>/<repoId>/<40-hex-sha>
+//   vstfs:///Git/PullRequestId/<projectId>/<repoId>/<prId>
+// URLs may arrive percent-encoded — decode first, then match tolerantly.
+function decodeArtifactUrl(raw: string): string {
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    return raw;
+  }
+}
+
+function extractGitCommitRefs(
+  relations: unknown[] | undefined
+): { repositoryId: string; commitId: string }[] {
+  if (!relations) return [];
+  const refs: { repositoryId: string; commitId: string }[] = [];
+  for (const rel of relations) {
+    const relObj = rel as Record<string, unknown>;
+    if (relObj.rel !== "ArtifactLink") continue;
+    const rawUrl = relObj.url as string | undefined;
+    if (!rawUrl) continue;
+    const url = decodeArtifactUrl(rawUrl);
+    if (!/vstfs:\/{2,3}Git\/Commit\//i.test(url)) continue;
+    const match = url.match(/Git\/Commit\/[^/]+\/([^/]+)\/([0-9a-f]{40})/i);
+    if (match) {
+      refs.push({ repositoryId: match[1], commitId: match[2].toLowerCase() });
+    }
+  }
+  return refs;
+}
+
+function extractPullRequestRefs(
+  relations: unknown[] | undefined
+): { repositoryId: string; pullRequestId: number }[] {
+  if (!relations) return [];
+  const refs: { repositoryId: string; pullRequestId: number }[] = [];
+  for (const rel of relations) {
+    const relObj = rel as Record<string, unknown>;
+    if (relObj.rel !== "ArtifactLink") continue;
+    const rawUrl = relObj.url as string | undefined;
+    if (!rawUrl) continue;
+    const url = decodeArtifactUrl(rawUrl);
+    if (!/vstfs:\/{2,3}Git\/PullRequestId\//i.test(url)) continue;
+    const match = url.match(/Git\/PullRequestId\/[^/]+\/([^/]+)\/(\d+)/i);
+    if (match) {
+      refs.push({
+        repositoryId: match[1],
+        pullRequestId: parseInt(match[2], 10),
+      });
+    }
+  }
+  return refs;
+}
 
 export function registerGitAdvancedTools(server: McpServer, provider: IConnectionProvider): void {
   server.registerTool(
@@ -182,6 +239,141 @@ export function registerGitAdvancedTools(server: McpServer, provider: IConnectio
         };
 
         return jsonResponse(result);
+      })
+  );
+
+  server.registerTool(
+    "get_work_item_commits",
+    {
+      description:
+        "Get all Git commits and pull requests linked to a work item, including file changes (optional). Useful for reviewing what code changes were made for a bug fix or feature.",
+      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: true },
+      inputSchema: {
+        workItemId: z
+          .number()
+          .describe("Work item ID (Bug, Task, User Story, etc.)"),
+        includeChanges: z
+          .boolean()
+          .optional()
+          .default(false)
+          .describe("Also fetch the changed-file list per commit"),
+      },
+    },
+    ({ workItemId, includeChanges }) =>
+      withErrorHandling(async () => {
+        const { api: witApi, project } = await provider.getWorkItemContext();
+        const { api: gitApi } = await provider.getGitContext();
+
+        const workItem = await witApi.getWorkItem(
+          workItemId,
+          undefined,
+          undefined,
+          WorkItemExpand.Relations,
+          project
+        );
+
+        if (!workItem) {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: `Work item ${workItemId} not found.`,
+              },
+            ],
+          };
+        }
+
+        const commitRefs = extractGitCommitRefs(workItem.relations);
+        const prRefs = extractPullRequestRefs(workItem.relations);
+
+        if (commitRefs.length === 0 && prRefs.length === 0) {
+          return jsonResponse({
+            workItem: {
+              id: workItem.id,
+              type: workItem.fields?.["System.WorkItemType"],
+              title: workItem.fields?.["System.Title"],
+            },
+            message: "No Git commits or pull requests linked to this work item.",
+          });
+        }
+
+        const commitResults: Record<string, unknown>[] = [];
+        for (const { repositoryId, commitId } of commitRefs) {
+          try {
+            const commit = await gitApi.getCommit(commitId, repositoryId, project);
+
+            let fileChanges:
+              | { changeType: unknown; path: string | undefined }[]
+              | undefined;
+            if (includeChanges) {
+              const changes = await gitApi.getChanges(
+                commitId,
+                repositoryId,
+                project
+              );
+              fileChanges = (changes.changes || []).map((change) => ({
+                changeType: change.changeType,
+                path: change.item?.path,
+              }));
+            }
+
+            commitResults.push({
+              commitId: commit.commitId,
+              shortId: commit.commitId?.substring(0, SHORT_COMMIT_SHA_LENGTH),
+              repositoryId,
+              author: commit.author?.name,
+              authorEmail: commit.author?.email,
+              authorDate: commit.author?.date,
+              comment: commit.comment,
+              ...(fileChanges ? { fileChanges } : {}),
+            });
+          } catch (err: unknown) {
+            commitResults.push({
+              commitId,
+              repositoryId,
+              error: `Failed to fetch commit: ${extractErrorMessage(err)}`,
+            });
+          }
+        }
+
+        const pullRequestResults: Record<string, unknown>[] = [];
+        for (const { repositoryId, pullRequestId } of prRefs) {
+          try {
+            const pr = await gitApi.getPullRequest(
+              repositoryId,
+              pullRequestId,
+              project
+            );
+            pullRequestResults.push({
+              pullRequestId: pr.pullRequestId,
+              repositoryId,
+              title: pr.title,
+              status: pr.status,
+              createdBy: pr.createdBy?.displayName,
+              creationDate: pr.creationDate,
+              sourceBranch: pr.sourceRefName,
+              targetBranch: pr.targetRefName,
+            });
+          } catch (err: unknown) {
+            pullRequestResults.push({
+              pullRequestId,
+              repositoryId,
+              error: `Failed to fetch pull request: ${extractErrorMessage(err)}`,
+            });
+          }
+        }
+
+        return jsonResponse({
+          workItem: {
+            id: workItem.id,
+            type: workItem.fields?.["System.WorkItemType"],
+            title: workItem.fields?.["System.Title"],
+            state: workItem.fields?.["System.State"],
+          },
+          totalCommits: commitResults.length,
+          commits: commitResults,
+          pullRequests: pullRequestResults,
+        });
       })
   );
 }
