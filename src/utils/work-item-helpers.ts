@@ -17,7 +17,10 @@ export async function batchGetWorkItems(
   ids: number[],
   fields: string[],
   project: string,
-  batchSize = WORK_ITEM_BATCH_SIZE
+  batchSize = WORK_ITEM_BATCH_SIZE,
+  // Invoked after each batch with (itemsFetchedSoFar, totalIds). Awaited so a
+  // reporter that emits MCP progress notifications stays ordered with the loop.
+  onProgress?: (fetched: number, total: number) => void | Promise<void>
 ): Promise<{ id?: number; fields?: Record<string, unknown> }[]> {
   const allItems: { id?: number; fields?: Record<string, unknown> }[] = [];
   for (let i = 0; i < ids.length; i += batchSize) {
@@ -31,6 +34,7 @@ export async function batchGetWorkItems(
       project
     );
     if (items) allItems.push(...items);
+    if (onProgress) await onProgress(Math.min(i + batchSize, ids.length), ids.length);
   }
   return allItems;
 }

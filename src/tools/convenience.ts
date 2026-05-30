@@ -5,6 +5,7 @@ import { withErrorHandling, jsonResponse, textResponse } from "../utils/tool-res
 import { sanitizeWiqlValue } from "../utils/wiql.js";
 import { topParam } from "../utils/schemas.js";
 import { extractDisplayValue, batchGetWorkItems } from "../utils/work-item-helpers.js";
+import { makeProgressReporter } from "../utils/progress.js";
 import { LARGE_RESULT_HINT_THRESHOLD, WIQL_STATISTICS_TOP } from "../constants.js";
 
 // --- Helper types ---
@@ -385,7 +386,7 @@ export function registerConvenienceTools(server: McpServer, provider: IConnectio
           .describe("Return only the top N areas by count"),
       },
     },
-    ({ workItemTypes, days, states, areaPathPrefix, areaPathContains, groupByDepth, tags, iterationPath, topAreas }) =>
+    ({ workItemTypes, days, states, areaPathPrefix, areaPathContains, groupByDepth, tags, iterationPath, topAreas }, extra) =>
       withErrorHandling(async () => {
         const { api, project } = await provider.getWorkItemContext();
 
@@ -420,12 +421,16 @@ export function registerConvenienceTools(server: McpServer, provider: IConnectio
           .map((wi) => wi.id)
           .filter((id): id is number => id !== undefined);
 
-        // Fetch work item details in batches
+        // Fetch work item details in batches. This is the hot spot — a wide
+        // query can pull tens of thousands of items, so stream progress.
+        const report = makeProgressReporter(extra);
         const allItems = await batchGetWorkItems(
           api,
           allIds,
           ["System.Id", "System.AreaPath", "System.WorkItemType"],
-          project
+          project,
+          undefined,
+          (fetched, total) => report(fetched, total, `Fetched ${fetched}/${total} work items`)
         );
 
         const { countMap, totalProcessed } = groupByAreaPath(

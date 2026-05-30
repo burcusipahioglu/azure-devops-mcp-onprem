@@ -205,7 +205,7 @@ export function registerGitTools(server: McpServer, provider: IConnectionProvide
     "create_pull_request",
     {
       description: "Create a new pull request. WARNING: This is a WRITE operation that notifies reviewers and creates a record visible to the team. Show the user the repository, title, source/target branches, and reviewers before calling, and ask for confirmation. Tip: pass dryRun: true first to preview the exact payload before posting.",
-      annotations: { destructiveHint: false, idempotentHint: false, openWorldHint: true },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
       inputSchema: {
         repositoryId: z.string().describe("Repository name or ID"),
         title: z.string().describe("PR title"),

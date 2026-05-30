@@ -64,7 +64,7 @@ export function registerPipelineTools(server: McpServer, provider: IConnectionPr
     "queue_build",
     {
       description: "Queue (trigger) a build pipeline. WARNING: This is a WRITE operation that consumes agent time and may trigger downstream side effects (deploys, notifications). Show the user the definition ID, branch, and parameters before calling, and ask for confirmation. Tip: pass dryRun: true first to preview the exact payload before queueing.",
-      annotations: { destructiveHint: false, idempotentHint: false, openWorldHint: true },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
       inputSchema: {
         definitionId: z.number().describe("Build definition ID"),
         sourceBranch: z

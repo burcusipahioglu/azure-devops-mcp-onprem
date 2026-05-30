@@ -286,7 +286,7 @@ export function registerTestManagementTools(server: McpServer, provider: IConnec
     {
       description:
         "Add existing Test Case work items to a test suite. A Test Case is a work item (create it with create_work_item, type 'Test Case'); this tool links those work items into a suite so they appear in the plan. WARNING: This is a WRITE operation. Confirm the plan, suite, and test case IDs with the user before calling.",
-      annotations: { destructiveHint: false, idempotentHint: false, openWorldHint: true },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
       inputSchema: {
         planId: z.number().describe("Test plan ID the suite belongs to"),
         suiteId: z.number().describe("Test suite ID to add the test cases to"),

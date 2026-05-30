@@ -14,6 +14,7 @@ import { withErrorHandling, jsonResponse, textResponse, dryRunResponse } from ".
 import { topParam, skipParam, dryRunParam } from "../utils/schemas.js";
 import { withAudit } from "../utils/audit.js";
 import { extractDisplayValue, batchGetWorkItems } from "../utils/work-item-helpers.js";
+import { makeProgressReporter } from "../utils/progress.js";
 import { normalizeFieldPath, buildUpdatePatchDocument } from "../utils/patch-document.js";
 import { resolveMe } from "../utils/me-resolver.js";
 
@@ -40,7 +41,7 @@ export function registerWorkItemTools(server: McpServer, provider: IConnectionPr
         top: topParam(50),
       },
     },
-    ({ query, top }) =>
+    ({ query, top }, extra) =>
       withErrorHandling(async () => {
         const { api, project } = await provider.getWorkItemContext();
 
@@ -66,6 +67,7 @@ export function registerWorkItemTools(server: McpServer, provider: IConnectionPr
           return textResponse("No work items found.");
         }
 
+        const report = makeProgressReporter(extra);
         const allWorkItems = await batchGetWorkItems(
           api,
           ids,
@@ -78,7 +80,9 @@ export function registerWorkItemTools(server: McpServer, provider: IConnectionPr
             "System.CreatedDate",
             "System.ChangedDate",
           ],
-          project
+          project,
+          undefined,
+          (fetched, total) => report(fetched, total, `Fetched ${fetched}/${total} work items`)
         );
 
         const result = allWorkItems.map((wi) => ({
@@ -140,7 +144,7 @@ export function registerWorkItemTools(server: McpServer, provider: IConnectionPr
     "create_work_item",
     {
       description: "Create a new work item in Azure DevOps. WARNING: This is a WRITE operation that creates a permanent record. You MUST confirm with the user before calling this tool — show them the type, title, and all fields you will set, and ask for explicit approval.",
-      annotations: { destructiveHint: false, idempotentHint: false, openWorldHint: true },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
       inputSchema: {
         type: z
           .string()
@@ -247,7 +251,7 @@ export function registerWorkItemTools(server: McpServer, provider: IConnectionPr
     "update_work_item",
     {
       description: "Update an existing work item's fields. WARNING: This is a WRITE operation that modifies an existing record. You MUST confirm with the user before calling — show them the work item ID, current values of fields being changed, and the new values you will set. Ask for explicit approval.",
-      annotations: { destructiveHint: true, idempotentHint: true, openWorldHint: true },
+      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: true },
       inputSchema: {
         id: z.number().describe("Work item ID to update"),
         fields: z
@@ -348,7 +352,7 @@ export function registerWorkItemTools(server: McpServer, provider: IConnectionPr
     "add_work_item_comment",
     {
       description: "Add a comment to a work item. WARNING: This is a WRITE operation that notifies subscribers and cannot be silently undone. Show the user the comment text and work item ID before calling, and ask for confirmation. Tip: pass dryRun: true first to preview the exact payload before posting.",
-      annotations: { destructiveHint: false, idempotentHint: false, openWorldHint: true },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
       inputSchema: {
         workItemId: z.number().describe("Work item ID"),
         text: z.string().describe("Comment text (HTML supported)"),
@@ -382,7 +386,7 @@ export function registerWorkItemTools(server: McpServer, provider: IConnectionPr
     "link_work_items",
     {
       description: "Create a link between two work items. WARNING: This is a WRITE operation. Show the user the source ID, target ID, and link type before calling, and ask for confirmation.",
-      annotations: { destructiveHint: false, idempotentHint: false, openWorldHint: true },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
       inputSchema: {
         sourceId: z.number().describe("Source work item ID"),
         targetId: z.number().describe("Target work item ID"),
