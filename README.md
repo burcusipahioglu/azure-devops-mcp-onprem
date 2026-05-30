@@ -50,7 +50,7 @@ Query work items, repositories, and pipelines in natural language — running lo
 ```mermaid
 mindmap
   root((Azure DevOps<br/>MCP Server<br/>49 Tools))
-    **Work Items — 9**
+    **Work Items — 8**
       query_work_items
       get_work_item
       create_work_item
@@ -59,7 +59,6 @@ mindmap
       add_work_item_comment
       link_work_items
       get_work_item_history
-      bulk_update_work_items
     **Git — 9**
       list_repositories
       list_branches
@@ -93,13 +92,14 @@ mindmap
       search_work_items_by_tag
       get_work_item_statistics
       get_current_user
-    **Test Management — 6**
+    **Test Management — 7**
       list_test_plans
       get_test_plan
       list_test_suites
       list_test_cases
       list_test_runs
       get_test_results
+      add_test_cases_to_suite
     **Wiki — 5**
       list_wikis
       get_wiki_page
@@ -285,7 +285,7 @@ Pick one path:
 | Code (read & write) | Git tools, **TFVC tools**, PR creation |
 | Build (read & execute) | Pipeline tools, `queue_build` |
 | Release (read) | Release listing |
-| Test Management (read) | Test plans, suites, runs, results |
+| Test Management (read & write) | Test plans, suites, runs, results; add test cases to a suite |
 | Wiki (read & write) | Wiki tools |
 
 Create the PAT at `https://<your-tfs>/_usersSettings/tokens`. Set an expiration ≤ 90 days and rotate regularly.
@@ -392,7 +392,7 @@ Restart the client. All 49 tools appear in the tool picker. Server name is auto-
 
 ## Tool Reference
 
-### Work Items (7 tools)
+### Work Items (8 tools)
 
 | Tool | Description | Key Parameters |
 |------|-------------|----------------|
@@ -403,13 +403,7 @@ Restart the client. All 49 tools appear in the tool picker. Server name is auto-
 | `get_work_item_comments` | List comments (paginated, asc/desc, optional rendered HTML) | `workItemId`, `top`, `order`, `includeRenderedText`, `continuationToken` |
 | `add_work_item_comment` | Add a comment | `workItemId`, `text` |
 | `link_work_items` | Link two work items | `sourceId`, `targetId`, `linkType` |
-
-### Work Items Advanced (2 tools)
-
-| Tool | Description | Key Parameters |
-|------|-------------|----------------|
 | `get_work_item_history` | Full change audit trail (who/what/when with old/new values) | `workItemId`, `top`, `skip` |
-| `bulk_update_work_items` | Batch update with detailed before/after report | `ids`, `fields` |
 
 ### Git (6 tools)
 
@@ -465,7 +459,7 @@ Restart the client. All 49 tools appear in the tool picker. Server name is auto-
 | `get_work_item_statistics` | Work item counts by area path (handles 20K+ items) | `workItemTypes`, `days`, `states`, `areaPathPrefix`, `areaPathContains`, `groupByDepth`, `topAreas` |
 | `get_current_user` | Identity of the authenticated PAT owner (displayName, id, uniqueName) | — |
 
-### Test Management (6 tools)
+### Test Management (7 tools)
 
 | Tool | Description | Key Parameters |
 |------|-------------|----------------|
@@ -475,6 +469,7 @@ Restart the client. All 49 tools appear in the tool picker. Server name is auto-
 | `list_test_cases` | List test cases in a suite | `planId`, `suiteId` |
 | `list_test_runs` | List test runs (manual/automated) | `planId`, `automated`, `top` |
 | `get_test_results` | Test results with pass/fail and errors | `runId`, `outcomes`, `top` |
+| `add_test_cases_to_suite` | Link existing Test Case work items into a suite | `planId`, `suiteId`, `testCaseIds` |
 
 ### Wiki (5 tools)
 

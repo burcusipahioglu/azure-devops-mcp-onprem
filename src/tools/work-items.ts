@@ -11,7 +11,7 @@ import {
 } from "azure-devops-node-api/interfaces/common/VSSInterfaces.js";
 import type { IConnectionProvider } from "../connection/provider.js";
 import { withErrorHandling, jsonResponse, textResponse, dryRunResponse } from "../utils/tool-response.js";
-import { topParam, dryRunParam } from "../utils/schemas.js";
+import { topParam, skipParam, dryRunParam } from "../utils/schemas.js";
 import { withAudit } from "../utils/audit.js";
 import { extractDisplayValue, batchGetWorkItems } from "../utils/work-item-helpers.js";
 import { normalizeFieldPath, buildUpdatePatchDocument } from "../utils/patch-document.js";
@@ -432,5 +432,58 @@ export function registerWorkItemTools(server: McpServer, provider: IConnectionPr
           ],
         };
       }))
+  );
+
+  server.registerTool(
+    "get_work_item_history",
+    {
+      description: "Get the full change history of a work item — shows who changed which fields, when, and what the old/new values were. Useful for auditing and understanding how a bug or task evolved over time.",
+      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: true },
+      inputSchema: {
+        workItemId: z.number().describe("Work item ID"),
+        top: topParam(50),
+        skip: skipParam(),
+      },
+    },
+    ({ workItemId, top, skip }) =>
+      withErrorHandling(async () => {
+        const { api, project } = await provider.getWorkItemContext();
+
+        const updates = await api.getUpdates(
+          workItemId,
+          top,
+          skip,
+          project
+        );
+
+        const result = (updates || []).map((update) => {
+          const fieldChanges: Record<string, { oldValue: unknown; newValue: unknown }> = {};
+
+          if (update.fields) {
+            for (const [field, change] of Object.entries(update.fields)) {
+              fieldChanges[field] = {
+                oldValue: extractDisplayValue(change.oldValue),
+                newValue: extractDisplayValue(change.newValue),
+              };
+            }
+          }
+
+          return {
+            id: update.id,
+            revisedBy: update.revisedBy?.displayName,
+            revisedDate: update.revisedDate,
+            fieldChanges: Object.keys(fieldChanges).length > 0 ? fieldChanges : undefined,
+            relationChanges: update.relations
+              ? {
+                  added: update.relations.added?.length || 0,
+                  removed: update.relations.removed?.length || 0,
+                  updated: update.relations.updated?.length || 0,
+                }
+              : undefined,
+          };
+        });
+
+        return jsonResponse(result);
+      })
   );
 }

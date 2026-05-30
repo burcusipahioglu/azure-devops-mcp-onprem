@@ -41,7 +41,6 @@ import { registerPipelineTools } from "./tools/pipelines.js";
 import { registerTfvcTools } from "./tools/tfvc.js";
 import { registerConvenienceTools } from "./tools/convenience.js";
 import { registerGitAdvancedTools } from "./tools/git-advanced.js";
-import { registerWorkItemAdvancedTools } from "./tools/work-items-advanced.js";
 import { registerTestManagementTools } from "./tools/test-management.js";
 import { registerWikiTools } from "./tools/wiki.js";
 import { registerExternalResources } from "./resources/external.js";
@@ -72,7 +71,7 @@ const server = new McpServer(
 type ToolRegister = (server: McpServer, provider: AzureDevOpsConnectionProvider) => void;
 
 const domainModules: Record<DomainName, ToolRegister[]> = {
-  work_items: [registerWorkItemTools, registerWorkItemAdvancedTools],
+  work_items: [registerWorkItemTools],
   git: [registerGitTools, registerGitAdvancedTools],
   tfvc: [registerTfvcTools],
   pipelines: [registerPipelineTools],
