@@ -44,6 +44,9 @@ import { registerGitAdvancedTools } from "./tools/git-advanced.js";
 import { registerTestManagementTools } from "./tools/test-management.js";
 import { registerWikiTools } from "./tools/wiki.js";
 import { registerExternalResources } from "./resources/external.js";
+import { registerRiskPrompt } from "./prompts/work-items.js";
+import { registerGitPrompts } from "./prompts/git.js";
+import { registerTfvcPrompts } from "./prompts/tfvc.js";
 
 const config = loadConfig();
 const provider = new AzureDevOpsConnectionProvider(config);
@@ -91,11 +94,22 @@ const loadedResources = registerExternalResources(server);
 
 type PromptRegister = (server: McpServer, provider: AzureDevOpsConnectionProvider) => void;
 
-const promptModules: Partial<Record<DomainName, PromptRegister[]>> = {};
+const promptModules: Partial<Record<DomainName, PromptRegister[]>> = {
+  git: [registerGitPrompts],
+  tfvc: [registerTfvcPrompts],
+};
 
 for (const domain of ALL_DOMAINS) {
   if (!config.enabledDomains.has(domain)) continue;
   for (const reg of promptModules[domain] ?? []) reg(server, provider);
+}
+
+// Conditional prompt: risk_impact_analysis only makes sense when the work_items
+// domain is enabled AND the team supplied a risk-impact.md template via
+// AZURE_DEVOPS_RESOURCE_DIR. Gated outside the domain loop because it depends on
+// a loaded resource, not just a domain.
+if (config.enabledDomains.has("work_items") && loadedResources.has("risk-impact")) {
+  registerRiskPrompt(server, provider);
 }
 
 async function main() {

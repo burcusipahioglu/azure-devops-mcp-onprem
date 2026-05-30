@@ -8,6 +8,7 @@ import type { IConnectionProvider } from "../connection/provider.js";
 import { withErrorHandling, jsonResponse, textResponse, dryRunResponse } from "../utils/tool-response.js";
 import { topParam, dryRunParam } from "../utils/schemas.js";
 import { withAudit } from "../utils/audit.js";
+import { resolveMeId } from "../utils/me-resolver.js";
 import { FILE_CONTENT_TRUNCATION_LIMIT } from "../constants.js";
 
 export function registerGitTools(server: McpServer, provider: IConnectionProvider): void {
@@ -126,10 +127,17 @@ export function registerGitTools(server: McpServer, provider: IConnectionProvide
   server.registerTool(
     "list_pull_requests",
     {
-      description: "List pull requests in a repository with optional filters",
+      description: "List pull requests with optional filters. Omit repositoryId to search the whole project. Filter by reviewer to find PRs assigned to a person for review.",
       annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: true },
       inputSchema: {
-        repositoryId: z.string().describe("Repository name or ID"),
+        repositoryId: z
+          .string()
+          .optional()
+          .describe("Repository name or ID. Omit to search across the entire project."),
+        reviewer: z
+          .string()
+          .optional()
+          .describe("Only PRs where this person is a reviewer. Pass '@me' for the authenticated user (resolved to their id)."),
         status: z
           .enum(["active", "abandoned", "completed", "all"])
           .optional()
@@ -138,7 +146,7 @@ export function registerGitTools(server: McpServer, provider: IConnectionProvide
         top: topParam(25),
       },
     },
-    ({ repositoryId, status, top }) =>
+    ({ repositoryId, reviewer, status, top }) =>
       withErrorHandling(async () => {
         const { api, project } = await provider.getGitContext();
 
@@ -149,19 +157,34 @@ export function registerGitTools(server: McpServer, provider: IConnectionProvide
           all: PullRequestStatus.All,
         };
 
-        const prs = await api.getPullRequests(
-          repositoryId,
-          { status: statusMap[status] },
-          project,
-          undefined,
-          undefined,
-          top
-        );
+        const searchCriteria = {
+          status: statusMap[status],
+          reviewerId: await resolveMeId(reviewer, provider),
+        };
+
+        // Per-repo when a repositoryId is given; otherwise project-wide.
+        const prs = repositoryId
+          ? await api.getPullRequests(
+              repositoryId,
+              searchCriteria,
+              project,
+              undefined,
+              undefined,
+              top
+            )
+          : await api.getPullRequestsByProject(
+              project,
+              searchCriteria,
+              undefined,
+              undefined,
+              top
+            );
 
         const result = (prs || []).map((pr) => ({
           id: pr.pullRequestId,
           title: pr.title,
           status: pr.status,
+          repository: pr.repository?.name,
           createdBy: pr.createdBy?.displayName,
           creationDate: pr.creationDate,
           sourceBranch: pr.sourceRefName,

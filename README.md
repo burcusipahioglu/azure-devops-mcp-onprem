@@ -7,7 +7,7 @@
 [![MCP](https://img.shields.io/badge/MCP-Model_Context_Protocol-8B5CF6)](https://modelcontextprotocol.io/)
 [![Azure DevOps](https://img.shields.io/badge/Azure_DevOps-Server_2022.2-0078D7?logo=azure-devops&logoColor=white)](https://learn.microsoft.com/en-us/azure/devops/server/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Tools](https://img.shields.io/badge/Tools-49-green)](https://github.com/burcusipahioglu/azure-devops-mcp-onprem#tool-reference)
+[![Tools](https://img.shields.io/badge/Tools-50-green)](https://github.com/burcusipahioglu/azure-devops-mcp-onprem#tool-reference)
 [![npm version](https://img.shields.io/npm/v/@burcusg/azure-devops-mcp-onprem.svg)](https://www.npmjs.com/package/@burcusg/azure-devops-mcp-onprem)
 
 **Bring on-premises Azure DevOps Server to your AI assistant.**
@@ -27,7 +27,7 @@ Query work items, repositories, and pipelines in natural language — running lo
 
 | | |
 |---|---|
-| **49 tools / 7 domains** | Work Items · Git · **TFVC** · Pipelines · Wiki · Test Plans · Convenience |
+| **50 tools / 7 domains** | Work Items · Git · **TFVC** · Pipelines · Wiki · Test Plans · Convenience |
 | **TFVC native** | 11 dedicated tools — shelvesets, changesets, labels, branches. The reason this server exists. |
 | **Profile-based secrets** | `AZURE_DEVOPS_PROFILE=name` → gitignored `.env.<name>`; no PAT in cloud-synced `mcp.json`. Multi-instance is a natural byproduct. |
 | **Write safety** | 6 layers — MCP annotations · confirmation directive · readonly kill switch · rate limit · dry-run · audit log |
@@ -49,7 +49,7 @@ Query work items, repositories, and pipelines in natural language — running lo
 
 ```mermaid
 mindmap
-  root((Azure DevOps<br/>MCP Server<br/>49 Tools))
+  root((Azure DevOps<br/>MCP Server<br/>50 Tools))
     **Work Items — 8**
       query_work_items
       get_work_item
@@ -59,7 +59,7 @@ mindmap
       add_work_item_comment
       link_work_items
       get_work_item_history
-    **Git — 9**
+    **Git — 10**
       list_repositories
       list_branches
       get_file_content
@@ -69,6 +69,7 @@ mindmap
       list_commits
       get_commit_changes
       compare_branches
+      get_work_item_commits
     **TFVC — 11**
       tfvc_browse
       tfvc_get_file
@@ -129,6 +130,30 @@ Unknown domain names fail at startup — no silent typos. Startup log reports wh
 Enabled domains (4/7): work_items, tfvc, pipelines, convenience
 Disabled domains: git, wiki, test_plans
 ```
+
+---
+
+## Prompts & Resources
+
+Prompts are reusable, **advisory and read-only** workflows surfaced as slash commands in the AI client. Each one instructs the model to gather evidence with the read tools and ground every claim in concrete IDs — none ever call a write tool or post a comment. Prompts load on the **same domain axis** as tools, so disabling a domain hides its prompts.
+
+| Domain | Prompt | What it does |
+|--------|--------|--------------|
+| `git` | `lessons_learned_git` | Root cause / detection / prevention report for a resolved bug, from its history and linked Git commits/PRs |
+| `git` | `my_review_queue` | Active PRs assigned to me as a reviewer, project-wide, oldest first (no arguments) |
+| `git` | `summarize_pull_request` | Plain-language "what this PR does" summary |
+| `git` | `review_pull_request` | Structured advisory review: risks, test gaps, maintainability, questions |
+| `git` | `analyze_commit_range` | Release-notes style changelog between two branches |
+| `tfvc` | `lessons_learned_tfvc` | Root cause / detection / prevention report for a resolved bug, from its history and linked TFVC changesets |
+| `tfvc` | `changeset_summary` | Purpose, files, and scope/risk of a TFVC changeset |
+
+`lessons_learned` is split per source-control backend so each variant can name its own read tools (Git commits/PRs vs. TFVC changesets) — whichever loads depends on the enabled domain. Both still need `work_items` enabled to read the bug itself.
+
+### External resources
+
+Point `AZURE_DEVOPS_RESOURCE_DIR` at a folder and every `*.md` file in it is exposed as an MCP resource at `template://<filename>` (e.g. `release-checklist.md` → `template://release-checklist`). Use this to share team templates and checklists with the AI without baking them into the server.
+
+One template is wired to a prompt: dropping a **`risk-impact.md`** file in that folder enables the conditional `risk_impact_analysis` prompt (work_items domain), which reads `template://risk-impact` and fills it from work-item evidence. No template file → the prompt simply doesn't appear. The template's contents are yours; the server only loads and serves them.
 
 ---
 
@@ -222,7 +247,7 @@ Six layers. The LLM cannot bypass the server-side ones — they short-circuit be
 
 | Layer | Scope | Enable |
 |-------|-------|--------|
-| **MCP annotations** | All 49 tools tagged with `readOnlyHint` / `destructiveHint` / `idempotentHint` — clients can skip read confirmations, warn on destructive writes | Always on |
+| **MCP annotations** | All 50 tools tagged with `readOnlyHint` / `destructiveHint` / `idempotentHint` — clients can skip read confirmations, warn on destructive writes | Always on |
 | **Confirmation directive** | Every write's description tells the LLM to show payload and ask before calling | Always on |
 | **Readonly mode** | Server refuses all 7 write tools with a clear error; reads unaffected. CI, demos, sandbox, emergency stop | `AZURE_DEVOPS_MODE=readonly` |
 | **Rate limit** | Global sliding 60s window across all writes — runaway-loop fence, not a throughput regulator | `AZURE_DEVOPS_RATE_LIMIT_WRITES_PER_MIN=10` (default; `0` disables) |
@@ -386,7 +411,7 @@ Quick Start config template (npm + credential file):
 }
 ```
 
-Restart the client. All 49 tools appear in the tool picker. Server name is auto-detected from `AZURE_DEVOPS_ORG_URL` (e.g. `https://dev.azure.com/acme` → `acme`); override with `AZURE_DEVOPS_SERVER_NAME`.
+Restart the client. All 50 tools appear in the tool picker. Server name is auto-detected from `AZURE_DEVOPS_ORG_URL` (e.g. `https://dev.azure.com/acme` → `acme`); override with `AZURE_DEVOPS_SERVER_NAME`.
 
 ---
 
@@ -412,17 +437,18 @@ Restart the client. All 49 tools appear in the tool picker. Server name is auto-
 | `list_repositories` | List all Git repos in project | — |
 | `list_branches` | List branches in a repo | `repositoryId` |
 | `get_file_content` | Get file content from repo | `repositoryId`, `path`, `branch` |
-| `list_pull_requests` | List PRs with filter | `repositoryId`, `status`, `top` |
+| `list_pull_requests` | List PRs; omit `repositoryId` for project-wide, filter by `reviewer` (accepts `@me`) | `repositoryId`, `reviewer`, `status`, `top` |
 | `get_pull_request` | Get PR details | `repositoryId`, `pullRequestId` |
 | `create_pull_request` | Create a new PR | `repositoryId`, `title`, `sourceBranch`, `targetBranch` |
 
-### Git Advanced (3 tools)
+### Git Advanced (4 tools)
 
 | Tool | Description | Key Parameters |
 |------|-------------|----------------|
 | `list_commits` | Commit history with filters | `repositoryId`, `branch`, `author` (accepts `@me`), `fromDate`, `toDate`, `itemPath` |
 | `get_commit_changes` | File changes in a commit | `repositoryId`, `commitId` |
 | `compare_branches` | Branch diff (ahead/behind + changed files) | `repositoryId`, `baseBranch`, `targetBranch` |
+| `get_work_item_commits` | Git commits & PRs linked to a work item | `workItemId`, `includeChanges` |
 
 ### TFVC (11 tools)
 
