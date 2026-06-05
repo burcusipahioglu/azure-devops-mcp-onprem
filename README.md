@@ -7,7 +7,7 @@
 [![MCP](https://img.shields.io/badge/MCP-Model_Context_Protocol-8B5CF6)](https://modelcontextprotocol.io/)
 [![Azure DevOps](https://img.shields.io/badge/Azure_DevOps-Server_2022.2-0078D7?logo=azure-devops&logoColor=white)](https://learn.microsoft.com/en-us/azure/devops/server/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Tools](https://img.shields.io/badge/Tools-51-green)](https://github.com/burcusipahioglu/azure-devops-mcp-onprem#tool-reference)
+[![Tools](https://img.shields.io/badge/Tools-48-green)](https://github.com/burcusipahioglu/azure-devops-mcp-onprem#tool-reference)
 [![npm version](https://img.shields.io/npm/v/@burcusg/azure-devops-mcp-onprem.svg)](https://www.npmjs.com/package/@burcusg/azure-devops-mcp-onprem)
 
 **Bring on-premises Azure DevOps Server to your AI assistant.**
@@ -29,18 +29,19 @@ Query work items, repositories, and pipelines in natural language — running lo
 |---|---|
 | **48 tools / 6 domains** | Work Items · Git · **TFVC** · Pipelines · Wiki · Test Plans |
 | **TFVC native** | 11 dedicated tools — shelvesets (incl. shelved file content), changesets, labels, branches. The reason this server exists. |
+| **PR review flow** | `/review_pull_request` → structured advisory review → on request, published to the PR as file-anchored comments, each one confirmed first |
 | **Profile-based secrets** | `AZURE_DEVOPS_PROFILE=name` → gitignored `.env.<name>`; no PAT in cloud-synced `mcp.json`. Multi-instance is a natural byproduct. |
-| **Write safety** | 6 layers — MCP annotations · confirmation directive · readonly kill switch · rate limit · dry-run · audit log |
+| **Write safety** | 6 layers — MCP annotations · confirmation directive · readonly kill switch · rate limit · dry-run on every write · audit log |
 | **AI clients** | Claude (Code/Desktop), GitHub Copilot, Cursor, Visual Studio Code — any MCP-compatible client |
 | **Local only** | PAT auth, no cloud proxy, no third-party calls, no telemetry |
-| **`@me` token** | `owner` / `author` / `assignedTo` accept `@me` — resolved per tenant, stateless for multi-agent setups |
-| **Typed results** | `outputSchema` + `structuredContent` on the 8 most-chained read tools — schema-validated parsing for LangChain/LangGraph and schema-aware clients |
+| **`@me` token** | `owner` / `author` / `reviewer` / `assignedTo` accept `@me` — resolved per tenant, stateless for multi-agent setups |
+| **Typed results** | `outputSchema` + `structuredContent` on the 8 most-chained read tools — schema-validated, machine-parseable results |
 
 ### Example questions
 
 > *"Show me all active bugs assigned to me in this sprint"*
 > *"What changed in changeset 12345?"*
-> *"Create a PR from feature/login to develop"*
+> *"Review PR 123 and post the findings as comments"*
 > *"List my latest shelvesets"*
 > *"Trigger the nightly build on the release branch"*
 
@@ -134,25 +135,25 @@ Disabled domains: git, wiki, test_plans
 
 ## Prompts & Resources
 
-Prompts are reusable, **advisory and read-only** workflows surfaced as slash commands in the AI client. Each one instructs the model to gather evidence with the read tools and ground every claim in concrete IDs — none ever call a write tool or post a comment. Prompts load on the **same domain axis** as tools, so disabling a domain hides its prompts.
+Prompts are reusable, **advisory** workflows surfaced as slash commands in the AI client. Each one instructs the model to gather evidence with the read tools and ground every claim in concrete IDs — producing the report never calls a write tool. One exception by design: `review_pull_request` can afterwards publish its findings as file-anchored PR comments, but only when you explicitly ask, with every comment confirmed before posting. Prompts load on the **same domain axis** as tools, so disabling a domain hides its prompts.
 
 | Domain | Prompt | What it does |
 |--------|--------|--------------|
 | `git` | `lessons_learned_git` | Root cause / detection / prevention report for a resolved bug, from its history and linked Git commits/PRs |
 | `git` | `my_review_queue` | Active PRs assigned to me as a reviewer, project-wide, oldest first (no arguments) |
 | `git` | `summarize_pull_request` | Plain-language "what this PR does" summary |
-| `git` | `review_pull_request` | Structured advisory review: risks, test gaps, maintainability, questions |
+| `git` | `review_pull_request` | Structured advisory review: risks, test gaps, maintainability, questions — on request, publishes findings to the PR as file-anchored comments |
 | `git` | `analyze_commit_range` | Release-notes style changelog between two branches |
 | `tfvc` | `lessons_learned_tfvc` | Root cause / detection / prevention report for a resolved bug, from its history and linked TFVC changesets |
 | `tfvc` | `changeset_summary` | Purpose, files, and scope/risk of a TFVC changeset |
 
-`lessons_learned` is split per source-control backend so each variant can name its own read tools (Git commits/PRs vs. TFVC changesets) — whichever loads depends on the enabled domain. Both still need `work_items` enabled to read the bug itself.
+`lessons_learned` is split per backend (Git vs. TFVC) so each variant names its own read tools; both need `work_items` enabled to read the bug itself.
 
 ### External resources
 
 Point `AZURE_DEVOPS_RESOURCE_DIR` at a folder and every `*.md` file in it is exposed as an MCP resource at `template://<filename>` (e.g. `release-checklist.md` → `template://release-checklist`). Use this to share team templates and checklists with the AI without baking them into the server.
 
-One template is wired to a prompt: dropping a **`risk-impact.md`** file in that folder enables the conditional `risk_impact_analysis` prompt (work_items domain), which reads `template://risk-impact` and fills it from work-item evidence. Pass its optional `shelvesetName` argument to also weigh the actual pending change (read via `tfvc_get_shelveset_file`) against the work item's stated intent. No template file → the prompt simply doesn't appear. The template's contents are yours; the server only loads and serves them.
+One template is wired to a prompt: dropping a **`risk-impact.md`** file in that folder enables the conditional `risk_impact_analysis` prompt, which fills the template from work-item evidence — optionally weighing an actual pending change via its `shelvesetName` argument. No template file → the prompt simply doesn't appear.
 
 ---
 
@@ -340,7 +341,7 @@ AZURE_DEVOPS_PAT=your_pat_token
 #### Claude Code — one command
 
 ```bash
-claude mcp add azure-devops -- npx -y @burcusg/azure-devops-mcp-onprem --env AZURE_DEVOPS_ENV_FILE=$HOME/.azure-devops-mcp.env
+claude mcp add azure-devops --env AZURE_DEVOPS_ENV_FILE=$HOME/.azure-devops-mcp.env -- npx -y @burcusg/azure-devops-mcp-onprem
 ```
 
 #### Other clients (Claude Desktop / Cursor / Antigravity / Codex CLI)
@@ -364,6 +365,8 @@ Expected stderr on startup:
 ```
 Azure DevOps MCP Server "CompanyOrg" running on stdio
 env file: /path/to/.env
+Enabled domains (6/6): work_items, git, tfvc, pipelines, wiki, test_plans
+External resources loaded: 0
 Authenticated as: Your Name (your.email@company.com)
 ```
 
@@ -418,19 +421,21 @@ Restart the client. All 48 tools appear in the tool picker. Server name is auto-
 
 **Typed results (first wave):** `query_work_items`, `list_pull_requests`, `get_pull_request`, `get_build`, `list_builds`, `tfvc_get_changeset`, `tfvc_list_changesets`, `list_test_runs` declare an MCP `outputSchema` and return `structuredContent` alongside the usual JSON text (text shape unchanged — existing clients see no difference).
 
+**Dry-run:** every write tool also accepts `dryRun: true` (not repeated in the tables below).
+
 ### Work Items (9 tools)
 
 | Tool | Description | Key Parameters |
 |------|-------------|----------------|
 | `query_work_items` | Execute a WIQL query (`@Me`, `@CurrentIteration`, `@Today` macros) | `query`, `fields` (projection per item), `top` |
 | `get_work_item` | Get work item by ID | `id`, `expand` (none/relations/fields/links/all) |
-| `create_work_item` | Create a new work item | `type`, `title`, `description`, `assignedTo` (accepts `@me`), `areaPath`, `iterationPath` |
+| `create_work_item` | Create a new work item | `type`, `title`, `description`, `assignedTo` (accepts `@me`), `areaPath`, `iterationPath`, `additionalFields` |
 | `update_work_item` | Update work item fields (returns before/after diff) | `id`, `fields` (key-value map) |
 | `get_work_item_comments` | List comments (paginated, asc/desc, optional rendered HTML) | `workItemId`, `top`, `order`, `includeRenderedText`, `continuationToken` |
 | `add_work_item_comment` | Add a comment | `workItemId`, `text` |
 | `link_work_items` | Link two work items | `sourceId`, `targetId`, `linkType` |
 | `get_work_item_history` | Full change audit trail (who/what/when with old/new values) | `workItemId`, `top`, `skip` |
-| `get_work_item_statistics` | Work item counts by area path (handles 20K+ items) | `workItemTypes`, `days`, `states`, `areaPathPrefix`, `areaPathContains`, `groupByDepth`, `topAreas` |
+| `get_work_item_statistics` | Work item counts by area path (handles 20K+ items) | `workItemTypes`, `days`, `states`, `areaPathPrefix`, `areaPathContains`, `tags`, `iterationPath`, `groupByDepth`, `topAreas` |
 
 ### Git (8 tools)
 
@@ -442,7 +447,7 @@ Restart the client. All 48 tools appear in the tool picker. Server name is auto-
 | `list_pull_requests` | List PRs; omit `repositoryId` for project-wide, filter by `reviewer` (accepts `@me`) | `repositoryId`, `reviewer`, `status`, `top` |
 | `get_pull_request` | Get PR details | `repositoryId`, `pullRequestId` |
 | `get_pull_request_comments` | List PR comment threads (file-anchored + general) | `repositoryId`, `pullRequestId`, `includeSystem` |
-| `add_pull_request_comment` | Comment on a PR — general, file-anchored (`filePath`+`line`), or reply (`threadId`) | `repositoryId`, `pullRequestId`, `content`, `threadId`, `filePath`, `line`, `dryRun` |
+| `add_pull_request_comment` | Comment on a PR — general, file-anchored (`filePath`+`line`), or reply (`threadId`) | `repositoryId`, `pullRequestId`, `content`, `threadId`, `filePath`, `line` |
 | `create_pull_request` | Create a new PR | `repositoryId`, `title`, `sourceBranch`, `targetBranch` |
 
 ### Git Advanced (4 tools)
@@ -510,7 +515,7 @@ Restart the client. All 48 tools appear in the tool picker. Server name is auto-
 
 ## `@me` token
 
-Several filter parameters accept the magic token `@me` — the server resolves it to the authenticated PAT owner's display name via Azure DevOps `ConnectionData`. The identity is cached for the lifetime of the process.
+Several filter parameters accept the magic token `@me` — the server resolves it to the authenticated PAT owner's identity via Azure DevOps `ConnectionData` (display name for author/owner filters, user id where the API requires one, e.g. `reviewer`). The identity is cached for the lifetime of the process.
 
 **Why:** in multi-agent setups, sub-agents rarely know the human's display name. `@me` lets any agent filter to "my stuff" without needing identity context.
 
@@ -520,6 +525,7 @@ Several filter parameters accept the magic token `@me` — the server resolves i
 | `tfvc_list_changesets` | `author` |
 | `tfvc_list_labels` | `owner` |
 | `list_commits` | `author` |
+| `list_pull_requests` | `reviewer` |
 | `create_work_item` | `assignedTo` |
 
 ```jsonc

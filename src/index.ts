@@ -64,7 +64,7 @@ const SERVER_INSTRUCTIONS = [
   "Write safety: every mutating tool short-circuits through an audit wrapper. AZURE_DEVOPS_MODE=readonly refuses all writes; a 10/min global rate limit and optional JSONL audit log apply.",
 ].join("\n");
 
-const SERVER_VERSION = "1.3.0";
+const SERVER_VERSION = "1.5.0";
 
 const server = new McpServer(
   { name: config.serverName, version: SERVER_VERSION },
