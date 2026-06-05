@@ -5,7 +5,7 @@ import {
   BuildStatus,
 } from "azure-devops-node-api/interfaces/BuildInterfaces.js";
 import type { IConnectionProvider } from "../connection/provider.js";
-import { withErrorHandling, jsonResponse, dryRunResponse } from "../utils/tool-response.js";
+import { withErrorHandling, jsonResponse, dryRunResponse, structuredResponse, toIso } from "../utils/tool-response.js";
 import { topParam, dryRunParam } from "../utils/schemas.js";
 import { withAudit } from "../utils/audit.js";
 
@@ -17,6 +17,40 @@ const BUILD_STATUS_MAP: Record<string, BuildStatus> = {
   postponed: BuildStatus.Postponed,
   notStarted: BuildStatus.NotStarted,
   none: BuildStatus.None,
+};
+
+// Typed-results first wave. Every field optional — server version differences
+// must never fail validation. Status/result enums arrive as numbers.
+const buildSummary = z.object({
+  id: z.number().optional(),
+  buildNumber: z.string().optional(),
+  status: z.union([z.number(), z.string()]).optional(),
+  result: z.union([z.number(), z.string()]).optional(),
+  definition: z.string().optional(),
+  sourceBranch: z.string().optional(),
+  requestedBy: z.string().optional(),
+  startTime: z.string().optional(),
+  finishTime: z.string().optional(),
+});
+
+const getBuildOutput = {
+  id: z.number().optional(),
+  buildNumber: z.string().optional(),
+  status: z.union([z.number(), z.string()]).optional(),
+  result: z.union([z.number(), z.string()]).optional(),
+  sourceBranch: z.string().optional(),
+  sourceVersion: z.string().optional(),
+  definition: z.string().optional(),
+  requestedBy: z.string().optional(),
+  startTime: z.string().optional(),
+  finishTime: z.string().optional(),
+  url: z.string().optional(),
+  logs: z.string().optional(),
+};
+
+const listBuildsOutput = {
+  count: z.number().describe("Number of builds returned"),
+  items: z.array(buildSummary),
 };
 
 export function registerPipelineTools(server: McpServer, provider: IConnectionProvider): void {
@@ -127,6 +161,7 @@ export function registerPipelineTools(server: McpServer, provider: IConnectionPr
       inputSchema: {
         buildId: z.number().describe("Build ID"),
       },
+      outputSchema: getBuildOutput,
     },
     ({ buildId }) =>
       withErrorHandling(async () => {
@@ -134,7 +169,7 @@ export function registerPipelineTools(server: McpServer, provider: IConnectionPr
 
         const build = await api.getBuild(project, buildId);
 
-        return jsonResponse({
+        return structuredResponse({
           id: build.id,
           buildNumber: build.buildNumber,
           status: build.status,
@@ -143,8 +178,8 @@ export function registerPipelineTools(server: McpServer, provider: IConnectionPr
           sourceVersion: build.sourceVersion,
           definition: build.definition?.name,
           requestedBy: build.requestedBy?.displayName,
-          startTime: build.startTime,
-          finishTime: build.finishTime,
+          startTime: toIso(build.startTime),
+          finishTime: toIso(build.finishTime),
           url: build.url,
           logs: build.logs?.url,
         });
@@ -175,6 +210,7 @@ export function registerPipelineTools(server: McpServer, provider: IConnectionPr
           .describe("Build status filter"),
         top: topParam(10),
       },
+      outputSchema: listBuildsOutput,
     },
     ({ definitionId, status, top }) =>
       withErrorHandling(async () => {
@@ -205,11 +241,11 @@ export function registerPipelineTools(server: McpServer, provider: IConnectionPr
           definition: build.definition?.name,
           sourceBranch: build.sourceBranch,
           requestedBy: build.requestedBy?.displayName,
-          startTime: build.startTime,
-          finishTime: build.finishTime,
+          startTime: toIso(build.startTime),
+          finishTime: toIso(build.finishTime),
         }));
 
-        return jsonResponse(result);
+        return structuredResponse({ count: result.length, items: result }, result);
       })
   );
 

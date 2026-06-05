@@ -6,7 +6,7 @@ import type { ToolResult } from "./tool-response.js";
 // repeatedly) without interfering with realistic interactive use, where a
 // human-paced LLM session rarely exceeds a handful of writes per minute.
 //
-// Granularity: all 7 write tools share one counter. A per-tool counter
+// Granularity: all 8 write tools share one counter. A per-tool counter
 // could be bypassed by an LLM that spreads its loop across tools; the
 // global counter cannot. ADO server load is also a global resource.
 //
@@ -21,6 +21,11 @@ function limit(): number {
   const n = Number(raw);
   if (!Number.isFinite(n) || n < 0) return DEFAULT_LIMIT;
   return Math.floor(n);
+}
+
+// Configured limit, for the audit session header (0 = disabled).
+export function configuredWritesPerMin(): number {
+  return limit();
 }
 
 // In-memory ring of write timestamps. Process-local; resets on restart,

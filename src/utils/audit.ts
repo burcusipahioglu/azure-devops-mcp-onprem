@@ -64,6 +64,29 @@ function writeAuditRecord(path: string, record: unknown): void {
   }
 }
 
+// One self-describing header per process, so a log file (or a stretch of a
+// shared one) can be interpreted without the producing server's env at hand:
+// which version/mode/domains generated the records that follow, and whether
+// they are redacted. Contains config and identity only — no user content —
+// so redact mode just flags itself rather than stripping fields.
+export function auditSessionStart(info: {
+  serverName: string;
+  version: string;
+  mode: "readonly" | "write";
+  enabledDomains: string[];
+  rateLimitWritesPerMin: number;
+  user: string;
+}): void {
+  const path = auditPath();
+  if (!path) return;
+  writeAuditRecord(path, {
+    event: "session_start",
+    ts: new Date().toISOString(),
+    redactMode: isRedactMode(),
+    ...info,
+  });
+}
+
 async function resolveUser(provider: IConnectionProvider): Promise<string> {
   try {
     const u = await provider.resolveCurrentUser();

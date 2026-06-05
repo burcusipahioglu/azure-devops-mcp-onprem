@@ -27,13 +27,14 @@ Query work items, repositories, and pipelines in natural language — running lo
 
 | | |
 |---|---|
-| **46 tools / 6 domains** | Work Items · Git · **TFVC** · Pipelines · Wiki · Test Plans |
+| **48 tools / 6 domains** | Work Items · Git · **TFVC** · Pipelines · Wiki · Test Plans |
 | **TFVC native** | 11 dedicated tools — shelvesets (incl. shelved file content), changesets, labels, branches. The reason this server exists. |
 | **Profile-based secrets** | `AZURE_DEVOPS_PROFILE=name` → gitignored `.env.<name>`; no PAT in cloud-synced `mcp.json`. Multi-instance is a natural byproduct. |
 | **Write safety** | 6 layers — MCP annotations · confirmation directive · readonly kill switch · rate limit · dry-run · audit log |
 | **AI clients** | Claude (Code/Desktop), GitHub Copilot, Cursor, Visual Studio Code — any MCP-compatible client |
 | **Local only** | PAT auth, no cloud proxy, no third-party calls, no telemetry |
 | **`@me` token** | `owner` / `author` / `assignedTo` accept `@me` — resolved per tenant, stateless for multi-agent setups |
+| **Typed results** | `outputSchema` + `structuredContent` on the 8 most-chained read tools — schema-validated parsing for LangChain/LangGraph and schema-aware clients |
 
 ### Example questions
 
@@ -49,7 +50,7 @@ Query work items, repositories, and pipelines in natural language — running lo
 
 ```mermaid
 mindmap
-  root((Azure DevOps<br/>MCP Server<br/>46 Tools))
+  root((Azure DevOps<br/>MCP Server<br/>48 Tools))
     **Work Items — 9**
       query_work_items
       get_work_item
@@ -60,12 +61,14 @@ mindmap
       link_work_items
       get_work_item_history
       get_work_item_statistics
-    **Git — 10**
+    **Git — 12**
       list_repositories
       list_branches
       get_file_content
       list_pull_requests
       get_pull_request
+      get_pull_request_comments
+      add_pull_request_comment
       create_pull_request
       list_commits
       get_commit_changes
@@ -243,12 +246,12 @@ Six layers. The LLM cannot bypass the server-side ones — they short-circuit be
 
 | Layer | Scope | Enable |
 |-------|-------|--------|
-| **MCP annotations** | All 46 tools tagged with `readOnlyHint` / `destructiveHint` / `idempotentHint` — clients can skip read confirmations, warn on destructive writes | Always on |
+| **MCP annotations** | All 48 tools tagged with `readOnlyHint` / `destructiveHint` / `idempotentHint` — clients can skip read confirmations, warn on destructive writes | Always on |
 | **Confirmation directive** | Every write's description tells the LLM to show payload and ask before calling | Always on |
-| **Readonly mode** | Server refuses all 7 write tools with a clear error; reads unaffected. CI, demos, sandbox, emergency stop | `AZURE_DEVOPS_MODE=readonly` |
+| **Readonly mode** | Server refuses all 8 write tools with a clear error; reads unaffected. CI, demos, sandbox, emergency stop | `AZURE_DEVOPS_MODE=readonly` |
 | **Rate limit** | Global sliding 60s window across all writes — runaway-loop fence, not a throughput regulator | `AZURE_DEVOPS_RATE_LIMIT_WRITES_PER_MIN=10` (default; `0` disables) |
-| **Dry-run** | `add_work_item_comment`, `create_pull_request`, `queue_build` — pass `dryRun: true` for the literal API payload without firing | Per-call |
-| **Audit log** | JSONL append per write: timestamp, tool, user, input, result, `dryRun`, `ok`, `durationMs`, `blocked` reason | `AZURE_DEVOPS_AUDIT_LOG=/path/to/audit.jsonl` |
+| **Dry-run** | All 8 write tools — pass `dryRun: true` for the literal API payload without firing; `update_work_item` also returns the current values next to the intended ones | Per-call |
+| **Audit log** | JSONL append per write: timestamp, tool, user, input, result, `dryRun`, `ok`, `durationMs`, `blocked` reason. Each process opens with a `session_start` header (version, mode, domains, rate limit) so the file interprets itself | `AZURE_DEVOPS_AUDIT_LOG=/path/to/audit.jsonl` |
 
 **Audit privacy:** add `AZURE_DEVOPS_AUDIT_REDACT=1` to keep numeric IDs and field shape but drop all string values (titles, comments, branch names). Useful when work-item content carries classified data.
 
@@ -407,11 +410,13 @@ Quick Start config template (npm + credential file):
 }
 ```
 
-Restart the client. All 46 tools appear in the tool picker. Server name is auto-detected from `AZURE_DEVOPS_ORG_URL` (e.g. `https://dev.azure.com/acme` → `acme`); override with `AZURE_DEVOPS_SERVER_NAME`.
+Restart the client. All 48 tools appear in the tool picker. Server name is auto-detected from `AZURE_DEVOPS_ORG_URL` (e.g. `https://dev.azure.com/acme` → `acme`); override with `AZURE_DEVOPS_SERVER_NAME`.
 
 ---
 
 ## Tool Reference
+
+**Typed results (first wave):** `query_work_items`, `list_pull_requests`, `get_pull_request`, `get_build`, `list_builds`, `tfvc_get_changeset`, `tfvc_list_changesets`, `list_test_runs` declare an MCP `outputSchema` and return `structuredContent` alongside the usual JSON text (text shape unchanged — existing clients see no difference).
 
 ### Work Items (9 tools)
 
@@ -427,7 +432,7 @@ Restart the client. All 46 tools appear in the tool picker. Server name is auto-
 | `get_work_item_history` | Full change audit trail (who/what/when with old/new values) | `workItemId`, `top`, `skip` |
 | `get_work_item_statistics` | Work item counts by area path (handles 20K+ items) | `workItemTypes`, `days`, `states`, `areaPathPrefix`, `areaPathContains`, `groupByDepth`, `topAreas` |
 
-### Git (6 tools)
+### Git (8 tools)
 
 | Tool | Description | Key Parameters |
 |------|-------------|----------------|
@@ -436,6 +441,8 @@ Restart the client. All 46 tools appear in the tool picker. Server name is auto-
 | `get_file_content` | Get file content from repo | `repositoryId`, `path`, `branch` |
 | `list_pull_requests` | List PRs; omit `repositoryId` for project-wide, filter by `reviewer` (accepts `@me`) | `repositoryId`, `reviewer`, `status`, `top` |
 | `get_pull_request` | Get PR details | `repositoryId`, `pullRequestId` |
+| `get_pull_request_comments` | List PR comment threads (file-anchored + general) | `repositoryId`, `pullRequestId`, `includeSystem` |
+| `add_pull_request_comment` | Comment on a PR — general, file-anchored (`filePath`+`line`), or reply (`threadId`) | `repositoryId`, `pullRequestId`, `content`, `threadId`, `filePath`, `line`, `dryRun` |
 | `create_pull_request` | Create a new PR | `repositoryId`, `title`, `sourceBranch`, `targetBranch` |
 
 ### Git Advanced (4 tools)

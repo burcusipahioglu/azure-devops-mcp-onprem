@@ -1,9 +1,9 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { IConnectionProvider } from "../connection/provider.js";
-import { withErrorHandling, jsonResponse } from "../utils/tool-response.js";
+import { withErrorHandling, jsonResponse, structuredResponse, toIso, dryRunResponse } from "../utils/tool-response.js";
 import { withAudit } from "../utils/audit.js";
-import { topParam, skipParam } from "../utils/schemas.js";
+import { topParam, skipParam, dryRunParam } from "../utils/schemas.js";
 import { STACK_TRACE_TRUNCATION_LIMIT } from "../constants.js";
 
 const TEST_OUTCOME_MAP: Record<string, number> = {
@@ -22,6 +22,43 @@ const TEST_OUTCOME_MAP: Record<string, number> = {
   Paused: 12,
   InProgress: 13,
   NotImpacted: 14,
+};
+
+// Typed-results first wave. Every field optional — server version differences
+// must never fail validation.
+const listTestRunsOutput = {
+  count: z.number().describe("Number of test runs returned"),
+  items: z.array(
+    z.object({
+      id: z.number().optional(),
+      name: z.string().optional(),
+      state: z.string().optional(),
+      isAutomated: z.boolean().optional(),
+      totalTests: z.number().optional(),
+      passedTests: z.number().optional(),
+      unanalyzedTests: z.number().optional(),
+      incompleteTests: z.number().optional(),
+      notApplicableTests: z.number().optional(),
+      startedDate: z.string().optional(),
+      completedDate: z.string().optional(),
+      createdDate: z.string().optional(),
+      owner: z.string().optional(),
+      plan: z
+        .object({
+          id: z.union([z.string(), z.number()]).optional(),
+          name: z.string().optional(),
+        })
+        .optional(),
+      build: z
+        .object({
+          id: z.union([z.string(), z.number()]).optional(),
+          name: z.string().optional(),
+        })
+        .optional(),
+      comment: z.string().optional(),
+      url: z.string().optional(),
+    })
+  ),
 };
 
 export function registerTestManagementTools(server: McpServer, provider: IConnectionProvider): void {
@@ -202,6 +239,7 @@ export function registerTestManagementTools(server: McpServer, provider: IConnec
         top: topParam(25),
         skip: skipParam(),
       },
+      outputSchema: listTestRunsOutput,
     },
     ({ planId, automated, includeRunDetails, top, skip }) =>
       withErrorHandling(async () => {
@@ -229,9 +267,9 @@ export function registerTestManagementTools(server: McpServer, provider: IConnec
           unanalyzedTests: run.unanalyzedTests,
           incompleteTests: run.incompleteTests,
           notApplicableTests: run.notApplicableTests,
-          startedDate: run.startedDate,
-          completedDate: run.completedDate,
-          createdDate: run.createdDate,
+          startedDate: toIso(run.startedDate),
+          completedDate: toIso(run.completedDate),
+          createdDate: toIso(run.createdDate),
           owner: run.owner?.displayName,
           plan: run.plan ? { id: run.plan.id, name: run.plan.name } : undefined,
           build: run.build ? { id: run.build.id, name: run.build.name } : undefined,
@@ -239,7 +277,7 @@ export function registerTestManagementTools(server: McpServer, provider: IConnec
           url: run.url,
         }));
 
-        return jsonResponse(result);
+        return structuredResponse({ count: result.length, items: result }, result);
       })
   );
 
@@ -302,7 +340,7 @@ export function registerTestManagementTools(server: McpServer, provider: IConnec
     "add_test_cases_to_suite",
     {
       description:
-        "Add existing Test Case work items to a test suite. A Test Case is a work item (create it with create_work_item, type 'Test Case'); this tool links those work items into a suite so they appear in the plan. WARNING: This is a WRITE operation. Confirm the plan, suite, and test case IDs with the user before calling.",
+        "Add existing Test Case work items to a test suite. A Test Case is a work item (create it with create_work_item, type 'Test Case'); this tool links those work items into a suite so they appear in the plan. WARNING: This is a WRITE operation. Confirm the plan, suite, and test case IDs with the user before calling. Tip: pass dryRun: true first to preview the exact payload before adding.",
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
       inputSchema: {
         planId: z.number().describe("Test plan ID the suite belongs to"),
@@ -315,12 +353,13 @@ export function registerTestManagementTools(server: McpServer, provider: IConnec
           .array(z.number())
           .optional()
           .describe("Optional test configuration IDs to assign to each added test case"),
+        dryRun: dryRunParam,
       },
     },
     (input) =>
       withAudit(provider, "add_test_cases_to_suite", input, () =>
         withErrorHandling(async () => {
-          const { planId, suiteId, testCaseIds, configurationIds } = input;
+          const { planId, suiteId, testCaseIds, configurationIds, dryRun } = input;
           const { api, project } = await provider.getTestPlanContext();
 
           const pointAssignments = configurationIds?.map((configurationId) => ({
@@ -331,6 +370,14 @@ export function registerTestManagementTools(server: McpServer, provider: IConnec
             workItem: { id },
             ...(pointAssignments ? { pointAssignments } : {}),
           }));
+
+          if (dryRun) {
+            return dryRunResponse({
+              action: "WOULD_ADD_TEST_CASES_TO_SUITE",
+              wouldBe: { project, planId, suiteId, payload: params },
+              notes: "No test cases added. Re-call with dryRun omitted or false to add.",
+            });
+          }
 
           const added = await api.addTestCasesToSuite(params, project, planId, suiteId);
 

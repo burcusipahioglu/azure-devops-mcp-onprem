@@ -1,7 +1,40 @@
 export type ToolResult = {
   content: { type: "text"; text: string }[];
+  structuredContent?: Record<string, unknown>;
   isError?: boolean;
 };
+
+// azure-devops-node-api deserializes contract dates into Date objects;
+// structured output wants plain JSON, so normalize to ISO strings.
+export function toIso(value: unknown): string | undefined {
+  if (value instanceof Date) return value.toISOString();
+  if (typeof value === "string") return value;
+  return undefined;
+}
+
+// Response carrying both machine-readable structuredContent (validated against
+// the tool's outputSchema by the SDK) and the classic text payload. `text`
+// defaults to the structured object; pass an explicit value to preserve a
+// tool's pre-schema text shape exactly (e.g. the bare array list tools have
+// always returned), so text-reading clients see no change.
+export function structuredResponse(
+  structured: Record<string, unknown>,
+  text?: unknown
+): ToolResult {
+  const textValue = text ?? structured;
+  return {
+    content: [
+      {
+        type: "text" as const,
+        text:
+          typeof textValue === "string"
+            ? textValue
+            : JSON.stringify(textValue, null, 2),
+      },
+    ],
+    structuredContent: structured,
+  };
+}
 
 function sanitizeErrorMessage(message: string): string {
   return message

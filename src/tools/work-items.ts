@@ -10,7 +10,7 @@ import {
   Operation,
 } from "azure-devops-node-api/interfaces/common/VSSInterfaces.js";
 import type { IConnectionProvider } from "../connection/provider.js";
-import { withErrorHandling, jsonResponse, textResponse, dryRunResponse } from "../utils/tool-response.js";
+import { withErrorHandling, jsonResponse, textResponse, dryRunResponse, structuredResponse, toIso } from "../utils/tool-response.js";
 import { topParam, skipParam, dryRunParam } from "../utils/schemas.js";
 import { withAudit } from "../utils/audit.js";
 import { extractDisplayValue, batchGetWorkItems } from "../utils/work-item-helpers.js";
@@ -24,6 +24,27 @@ const WORK_ITEM_EXPAND_MAP: Record<string, WorkItemExpand> = {
   fields: WorkItemExpand.Fields,
   links: WorkItemExpand.Links,
   all: WorkItemExpand.All,
+};
+
+// Typed-results first wave: outputSchema for the most-chained read tools.
+// Every field optional — on-prem version differences must never fail validation.
+const queryWorkItemsOutput = {
+  count: z.number().describe("Number of items returned"),
+  items: z.array(
+    z.object({
+      id: z.number().optional(),
+      type: z.string().optional(),
+      title: z.string().optional(),
+      state: z.string().optional(),
+      assignedTo: z.string().optional(),
+      createdDate: z.string().optional(),
+      changedDate: z.string().optional(),
+      fields: z
+        .record(z.string(), z.unknown())
+        .optional()
+        .describe("Present when a custom `fields` projection was requested"),
+    })
+  ),
 };
 
 export function registerWorkItemTools(server: McpServer, provider: IConnectionProvider): void {
@@ -46,6 +67,7 @@ export function registerWorkItemTools(server: McpServer, provider: IConnectionPr
           ),
         top: topParam(50),
       },
+      outputSchema: queryWorkItemsOutput,
     },
     ({ query, fields, top }, extra) =>
       withErrorHandling(async () => {
@@ -62,7 +84,7 @@ export function registerWorkItemTools(server: McpServer, provider: IConnectionPr
           !queryResult.workItems ||
           queryResult.workItems.length === 0
         ) {
-          return textResponse("No work items found.");
+          return structuredResponse({ count: 0, items: [] }, "No work items found.");
         }
 
         const ids = queryResult.workItems
@@ -70,7 +92,7 @@ export function registerWorkItemTools(server: McpServer, provider: IConnectionPr
           .filter((id): id is number => id !== undefined);
 
         if (ids.length === 0) {
-          return textResponse("No work items found.");
+          return structuredResponse({ count: 0, items: [] }, "No work items found.");
         }
 
         const customFields = fields !== undefined && fields.length > 0;
@@ -110,15 +132,17 @@ export function registerWorkItemTools(server: McpServer, provider: IConnectionPr
             }))
           : allWorkItems.map((wi) => ({
               id: wi.id,
-              type: wi.fields?.["System.WorkItemType"],
-              title: wi.fields?.["System.Title"],
-              state: wi.fields?.["System.State"],
-              assignedTo: extractDisplayValue(wi.fields?.["System.AssignedTo"]),
-              createdDate: wi.fields?.["System.CreatedDate"],
-              changedDate: wi.fields?.["System.ChangedDate"],
+              type: wi.fields?.["System.WorkItemType"] as string | undefined,
+              title: wi.fields?.["System.Title"] as string | undefined,
+              state: wi.fields?.["System.State"] as string | undefined,
+              assignedTo: extractDisplayValue(wi.fields?.["System.AssignedTo"]) as string | undefined,
+              createdDate: toIso(wi.fields?.["System.CreatedDate"]),
+              changedDate: toIso(wi.fields?.["System.ChangedDate"]),
             }));
 
-        return jsonResponse(result);
+        // Text keeps the historical bare-array shape; structuredContent wraps
+        // it (outputSchema top level must be an object).
+        return structuredResponse({ count: result.length, items: result }, result);
       })
   );
 
@@ -166,7 +190,7 @@ export function registerWorkItemTools(server: McpServer, provider: IConnectionPr
   server.registerTool(
     "create_work_item",
     {
-      description: "Create a new work item in Azure DevOps. WARNING: This is a WRITE operation that creates a permanent record. You MUST confirm with the user before calling this tool — show them the type, title, and all fields you will set, and ask for explicit approval.",
+      description: "Create a new work item in Azure DevOps. WARNING: This is a WRITE operation that creates a permanent record. You MUST confirm with the user before calling this tool — show them the type, title, and all fields you will set, and ask for explicit approval. Tip: pass dryRun: true first to preview the exact payload before creating.",
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
       inputSchema: {
         type: z
@@ -191,6 +215,7 @@ export function registerWorkItemTools(server: McpServer, provider: IConnectionPr
           .describe(
             "Additional field key-value pairs as { 'System.Tags': 'tag1; tag2' }"
           ),
+        dryRun: dryRunParam,
       },
     },
     (input) =>
@@ -203,6 +228,7 @@ export function registerWorkItemTools(server: McpServer, provider: IConnectionPr
           areaPath,
           iterationPath,
           additionalFields,
+          dryRun,
         } = input;
         const { api, project } = await provider.getWorkItemContext();
 
@@ -249,6 +275,14 @@ export function registerWorkItemTools(server: McpServer, provider: IConnectionPr
           }
         }
 
+        if (dryRun) {
+          return dryRunResponse({
+            action: "WOULD_CREATE_WORK_ITEM",
+            wouldBe: { project, type, payload: document },
+            notes: "No work item created. Re-call with dryRun omitted or false to create.",
+          });
+        }
+
         const workItem = await api.createWorkItem(
           null,
           document,
@@ -273,7 +307,7 @@ export function registerWorkItemTools(server: McpServer, provider: IConnectionPr
   server.registerTool(
     "update_work_item",
     {
-      description: "Update an existing work item's fields. WARNING: This is a WRITE operation that modifies an existing record. You MUST confirm with the user before calling — show them the work item ID, current values of fields being changed, and the new values you will set. Ask for explicit approval.",
+      description: "Update an existing work item's fields. WARNING: This is a WRITE operation that modifies an existing record. You MUST confirm with the user before calling — show them the work item ID, current values of fields being changed, and the new values you will set. Ask for explicit approval. Tip: pass dryRun: true first — it returns the current values alongside the intended changes without writing.",
       annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: true },
       inputSchema: {
         id: z.number().describe("Work item ID to update"),
@@ -282,11 +316,12 @@ export function registerWorkItemTools(server: McpServer, provider: IConnectionPr
           .describe(
             "Fields to update as { 'System.Title': 'New Title', 'System.State': 'Active' }"
           ),
+        dryRun: dryRunParam,
       },
     },
     (input) =>
       withAudit(provider, "update_work_item", input, () => withErrorHandling(async () => {
-        const { id, fields } = input;
+        const { id, fields, dryRun } = input;
         const { api, project } = await provider.getWorkItemContext();
 
         // Fetch current state before updating
@@ -302,6 +337,21 @@ export function registerWorkItemTools(server: McpServer, provider: IConnectionPr
         );
 
         const document = buildUpdatePatchDocument(fields);
+
+        if (dryRun) {
+          // The before-fetch above is read-only, so a dry run can show the
+          // real current values next to the intended ones.
+          const currentValues: Record<string, unknown> = {};
+          for (const fieldName of fieldNames) {
+            currentValues[fieldName] = extractDisplayValue(before?.fields?.[fieldName]);
+          }
+          return dryRunResponse({
+            action: "WOULD_UPDATE_WORK_ITEM",
+            before: currentValues,
+            wouldBe: { id, payload: document },
+            notes: "No fields updated. Re-call with dryRun omitted or false to update.",
+          });
+        }
 
         const workItem = await api.updateWorkItem(
           null,
@@ -408,7 +458,7 @@ export function registerWorkItemTools(server: McpServer, provider: IConnectionPr
   server.registerTool(
     "link_work_items",
     {
-      description: "Create a link between two work items. WARNING: This is a WRITE operation. Show the user the source ID, target ID, and link type before calling, and ask for confirmation.",
+      description: "Create a link between two work items. WARNING: This is a WRITE operation. Show the user the source ID, target ID, and link type before calling, and ask for confirmation. Tip: pass dryRun: true first to preview the exact payload before linking.",
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
       inputSchema: {
         sourceId: z.number().describe("Source work item ID"),
@@ -420,11 +470,12 @@ export function registerWorkItemTools(server: McpServer, provider: IConnectionPr
             "Link type reference name, e.g. System.LinkTypes.Hierarchy-Forward (parent-child), System.LinkTypes.Related"
           ),
         comment: z.string().optional().describe("Optional link comment"),
+        dryRun: dryRunParam,
       },
     },
     (input) =>
       withAudit(provider, "link_work_items", input, () => withErrorHandling(async () => {
-        const { sourceId, targetId, linkType, comment } = input;
+        const { sourceId, targetId, linkType, comment, dryRun } = input;
         const { api, project, orgUrl } = await provider.getWorkItemContext();
 
         const targetUrl = `${orgUrl}/_apis/wit/workItems/${targetId}`;
@@ -442,6 +493,14 @@ export function registerWorkItemTools(server: McpServer, provider: IConnectionPr
             },
           },
         ];
+
+        if (dryRun) {
+          return dryRunResponse({
+            action: "WOULD_LINK_WORK_ITEMS",
+            wouldBe: { sourceId, targetId, linkType, payload: document },
+            notes: "No link created. Re-call with dryRun omitted or false to link.",
+          });
+        }
 
         const workItem = await api.updateWorkItem(
           null,

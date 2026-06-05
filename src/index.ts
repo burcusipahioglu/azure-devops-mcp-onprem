@@ -45,6 +45,9 @@ import { registerGitAdvancedTools } from "./tools/git-advanced.js";
 import { registerTestManagementTools } from "./tools/test-management.js";
 import { registerWikiTools } from "./tools/wiki.js";
 import { registerExternalResources } from "./resources/external.js";
+import { auditSessionStart } from "./utils/audit.js";
+import { isReadonlyMode } from "./utils/write-mode.js";
+import { configuredWritesPerMin } from "./utils/rate-limit.js";
 import { registerRiskPrompt } from "./prompts/work-items.js";
 import { registerGitPrompts } from "./prompts/git.js";
 import { registerTfvcPrompts } from "./prompts/tfvc.js";
@@ -61,8 +64,10 @@ const SERVER_INSTRUCTIONS = [
   "Write safety: every mutating tool short-circuits through an audit wrapper. AZURE_DEVOPS_MODE=readonly refuses all writes; a 10/min global rate limit and optional JSONL audit log apply.",
 ].join("\n");
 
+const SERVER_VERSION = "1.3.0";
+
 const server = new McpServer(
-  { name: config.serverName, version: "1.3.0" },
+  { name: config.serverName, version: SERVER_VERSION },
   {
     capabilities: {
       prompts: { listChanged: true },
@@ -132,22 +137,29 @@ async function main() {
     loadedResources.size > 0 ? ` (${[...loadedResources].join(", ")})` : ""
   }`;
 
-  try {
-    const user = await provider.resolveCurrentUser();
-    console.error(`Azure DevOps MCP Server "${config.serverName}" running on stdio`);
-    console.error(envSource);
-    console.error(domainLine);
-    if (disabledLine) console.error(disabledLine);
-    console.error(resourceLine);
-    console.error(`Authenticated as: ${user.displayName} (${user.uniqueName})`);
-  } catch {
-    console.error(`Azure DevOps MCP Server "${config.serverName}" running on stdio`);
-    console.error(envSource);
-    console.error(domainLine);
-    if (disabledLine) console.error(disabledLine);
-    console.error(resourceLine);
-    console.error("Warning: Could not resolve current user identity");
-  }
+  const user = await provider.resolveCurrentUser().catch(() => null);
+
+  console.error(`Azure DevOps MCP Server "${config.serverName}" running on stdio`);
+  console.error(envSource);
+  console.error(domainLine);
+  if (disabledLine) console.error(disabledLine);
+  console.error(resourceLine);
+  console.error(
+    user
+      ? `Authenticated as: ${user.displayName} (${user.uniqueName})`
+      : "Warning: Could not resolve current user identity"
+  );
+
+  // Self-describing audit header — anchors the records that follow to the
+  // server config that produced them. No-op when the audit log is off.
+  auditSessionStart({
+    serverName: config.serverName,
+    version: SERVER_VERSION,
+    mode: isReadonlyMode() ? "readonly" : "write",
+    enabledDomains: enabled,
+    rateLimitWritesPerMin: configuredWritesPerMin(),
+    user: user ? user.uniqueName || user.displayName || "unknown" : "unknown",
+  });
 }
 
 main().catch((error) => {

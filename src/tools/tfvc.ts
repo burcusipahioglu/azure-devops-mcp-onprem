@@ -6,7 +6,7 @@ import {
 } from "azure-devops-node-api/interfaces/TfvcInterfaces.js";
 import { WorkItemExpand } from "azure-devops-node-api/interfaces/WorkItemTrackingInterfaces.js";
 import type { IConnectionProvider } from "../connection/provider.js";
-import { withErrorHandling, jsonResponse, textResponse, extractErrorMessage } from "../utils/tool-response.js";
+import { withErrorHandling, jsonResponse, textResponse, extractErrorMessage, structuredResponse, toIso } from "../utils/tool-response.js";
 import { topParam, skipParam } from "../utils/schemas.js";
 import { resolveMe } from "../utils/me-resolver.js";
 import { FILE_CONTENT_TRUNCATION_LIMIT } from "../constants.js";
@@ -29,6 +29,53 @@ function extractChangesetIds(relations: unknown[] | undefined): number[] {
   }
   return ids;
 }
+
+// Typed-results first wave. Every field optional — server version differences
+// must never fail validation. changeType arrives as a numeric enum.
+const getChangesetOutput = {
+  changesetId: z.number().optional(),
+  author: z.string().optional(),
+  checkedInBy: z.string().optional(),
+  createdDate: z.string().optional(),
+  comment: z.string().optional(),
+  checkinNotes: z
+    .array(z.object({ name: z.string().optional(), value: z.string().optional() }))
+    .optional(),
+  policyOverride: z.string().optional(),
+  workItems: z
+    .array(
+      z.object({
+        id: z.number().optional(),
+        title: z.string().optional(),
+        state: z.string().optional(),
+        workItemType: z.string().optional(),
+      })
+    )
+    .optional(),
+  changes: z
+    .array(
+      z.object({
+        changeType: z.union([z.number(), z.string()]).optional(),
+        path: z.string().optional(),
+        version: z.number().optional(),
+      })
+    )
+    .optional(),
+  url: z.string().optional(),
+};
+
+const listChangesetsOutput = {
+  count: z.number().describe("Number of changesets returned"),
+  items: z.array(
+    z.object({
+      changesetId: z.number().optional(),
+      author: z.string().optional(),
+      createdDate: z.string().optional(),
+      comment: z.string().optional(),
+      url: z.string().optional(),
+    })
+  ),
+};
 
 export function registerTfvcTools(server: McpServer, provider: IConnectionProvider): void {
   server.registerTool(
@@ -152,6 +199,7 @@ export function registerTfvcTools(server: McpServer, provider: IConnectionProvid
           .default(100)
           .describe("Maximum number of file changes to include"),
       },
+      outputSchema: getChangesetOutput,
     },
     ({ id, includeWorkItems, includeDetails, maxChangeCount }) =>
       withErrorHandling(async () => {
@@ -165,13 +213,16 @@ export function registerTfvcTools(server: McpServer, provider: IConnectionProvid
           includeWorkItems
         );
 
-        return jsonResponse({
+        return structuredResponse({
           changesetId: changeset.changesetId,
           author: changeset.author?.displayName,
           checkedInBy: changeset.checkedInBy?.displayName,
-          createdDate: changeset.createdDate,
+          createdDate: toIso(changeset.createdDate),
           comment: changeset.comment,
-          checkinNotes: changeset.checkinNotes,
+          checkinNotes: changeset.checkinNotes?.map((note) => ({
+            name: note.name,
+            value: note.value,
+          })),
           policyOverride: changeset.policyOverride?.comment,
           workItems: changeset.workItems?.map((wi) => ({
             id: wi.id,
@@ -214,6 +265,7 @@ export function registerTfvcTools(server: McpServer, provider: IConnectionProvid
         top: topParam(25),
         skip: skipParam(),
       },
+      outputSchema: listChangesetsOutput,
     },
     ({ itemPath, author, fromDate, toDate, top, skip }) =>
       withErrorHandling(async () => {
@@ -238,12 +290,12 @@ export function registerTfvcTools(server: McpServer, provider: IConnectionProvid
         const result = (changesets || []).map((cs) => ({
           changesetId: cs.changesetId,
           author: cs.author?.displayName,
-          createdDate: cs.createdDate,
+          createdDate: toIso(cs.createdDate),
           comment: cs.comment,
           url: cs.url,
         }));
 
-        return jsonResponse(result);
+        return structuredResponse({ count: result.length, items: result }, result);
       })
   );
 

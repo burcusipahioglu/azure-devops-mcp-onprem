@@ -3,13 +3,69 @@ import { z } from "zod";
 import {
   GitVersionType,
   PullRequestStatus,
+  CommentThreadStatus,
+  CommentType,
 } from "azure-devops-node-api/interfaces/GitInterfaces.js";
 import type { IConnectionProvider } from "../connection/provider.js";
-import { withErrorHandling, jsonResponse, textResponse, dryRunResponse } from "../utils/tool-response.js";
+import { withErrorHandling, jsonResponse, textResponse, dryRunResponse, structuredResponse, toIso } from "../utils/tool-response.js";
 import { topParam, dryRunParam } from "../utils/schemas.js";
 import { withAudit } from "../utils/audit.js";
 import { resolveMeId } from "../utils/me-resolver.js";
 import { FILE_CONTENT_TRUNCATION_LIMIT } from "../constants.js";
+
+// Typed-results first wave. Every field optional — server version differences
+// must never fail validation. Status enums arrive as numbers from the API.
+const pullRequestSummary = z.object({
+  id: z.number().optional(),
+  title: z.string().optional(),
+  status: z.union([z.number(), z.string()]).optional(),
+  repository: z.string().optional(),
+  createdBy: z.string().optional(),
+  creationDate: z.string().optional(),
+  sourceBranch: z.string().optional(),
+  targetBranch: z.string().optional(),
+  mergeStatus: z.union([z.number(), z.string()]).optional(),
+  reviewers: z
+    .array(
+      z.object({
+        name: z.string().optional(),
+        vote: z.number().optional(),
+      })
+    )
+    .optional(),
+});
+
+const listPullRequestsOutput = {
+  count: z.number().describe("Number of pull requests returned"),
+  items: z.array(pullRequestSummary),
+};
+
+const getPullRequestOutput = {
+  id: z.number().optional(),
+  title: z.string().optional(),
+  description: z.string().optional(),
+  status: z.union([z.number(), z.string()]).optional(),
+  isDraft: z.boolean().optional(),
+  repository: z.string().optional(),
+  createdBy: z.string().optional(),
+  creationDate: z.string().optional(),
+  closedDate: z.string().optional(),
+  sourceBranch: z.string().optional(),
+  targetBranch: z.string().optional(),
+  mergeStatus: z.union([z.number(), z.string()]).optional(),
+  lastMergeSourceCommit: z.string().optional(),
+  reviewers: z
+    .array(
+      z.object({
+        name: z.string().optional(),
+        vote: z.number().optional(),
+        isRequired: z.boolean().optional(),
+      })
+    )
+    .optional(),
+  labels: z.array(z.string().optional()).optional(),
+  url: z.string().optional(),
+};
 
 export function registerGitTools(server: McpServer, provider: IConnectionProvider): void {
   server.registerTool(
@@ -145,6 +201,7 @@ export function registerGitTools(server: McpServer, provider: IConnectionProvide
           .describe("PR status filter"),
         top: topParam(25),
       },
+      outputSchema: listPullRequestsOutput,
     },
     ({ repositoryId, reviewer, status, top }) =>
       withErrorHandling(async () => {
@@ -186,7 +243,7 @@ export function registerGitTools(server: McpServer, provider: IConnectionProvide
           status: pr.status,
           repository: pr.repository?.name,
           createdBy: pr.createdBy?.displayName,
-          creationDate: pr.creationDate,
+          creationDate: toIso(pr.creationDate),
           sourceBranch: pr.sourceRefName,
           targetBranch: pr.targetRefName,
           mergeStatus: pr.mergeStatus,
@@ -196,7 +253,7 @@ export function registerGitTools(server: McpServer, provider: IConnectionProvide
           })),
         }));
 
-        return jsonResponse(result);
+        return structuredResponse({ count: result.length, items: result }, result);
       })
   );
 
@@ -209,6 +266,7 @@ export function registerGitTools(server: McpServer, provider: IConnectionProvide
         repositoryId: z.string().describe("Repository name or ID"),
         pullRequestId: z.number().describe("Pull request ID"),
       },
+      outputSchema: getPullRequestOutput,
     },
     ({ repositoryId, pullRequestId }) =>
       withErrorHandling(async () => {
@@ -220,7 +278,7 @@ export function registerGitTools(server: McpServer, provider: IConnectionProvide
           project
         );
 
-        return jsonResponse({
+        return structuredResponse({
           id: pr.pullRequestId,
           title: pr.title,
           description: pr.description,
@@ -228,8 +286,8 @@ export function registerGitTools(server: McpServer, provider: IConnectionProvide
           isDraft: pr.isDraft,
           repository: pr.repository?.name,
           createdBy: pr.createdBy?.displayName,
-          creationDate: pr.creationDate,
-          closedDate: pr.closedDate,
+          creationDate: toIso(pr.creationDate),
+          closedDate: toIso(pr.closedDate),
           sourceBranch: pr.sourceRefName,
           targetBranch: pr.targetRefName,
           mergeStatus: pr.mergeStatus,
@@ -243,6 +301,161 @@ export function registerGitTools(server: McpServer, provider: IConnectionProvide
           url: pr.url,
         });
       })
+  );
+
+  server.registerTool(
+    "get_pull_request_comments",
+    {
+      description:
+        "List comment threads on a pull request, including file-anchored review comments and replies. System events (vote changes, ref updates) are filtered out by default.",
+      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: true },
+      inputSchema: {
+        repositoryId: z.string().describe("Repository name or ID"),
+        pullRequestId: z.number().describe("Pull request ID"),
+        includeSystem: z
+          .boolean()
+          .optional()
+          .default(false)
+          .describe("Also include system-generated threads (votes, updates)"),
+      },
+    },
+    ({ repositoryId, pullRequestId, includeSystem }) =>
+      withErrorHandling(async () => {
+        const { api, project } = await provider.getGitContext();
+
+        const threads = await api.getThreads(
+          repositoryId,
+          pullRequestId,
+          project
+        );
+
+        const result = (threads || [])
+          .filter((thread) => !thread.isDeleted)
+          .filter(
+            (thread) =>
+              includeSystem ||
+              thread.comments?.some((c) => c.commentType === CommentType.Text)
+          )
+          .map((thread) => ({
+            threadId: thread.id,
+            status: thread.status,
+            filePath: thread.threadContext?.filePath,
+            line: thread.threadContext?.rightFileStart?.line,
+            lastUpdatedDate: toIso(thread.lastUpdatedDate),
+            comments: (thread.comments || [])
+              .filter((c) => includeSystem || c.commentType === CommentType.Text)
+              .map((c) => ({
+                id: c.id,
+                parentCommentId: c.parentCommentId,
+                author: c.author?.displayName,
+                content: c.content,
+                publishedDate: toIso(c.publishedDate),
+              })),
+          }));
+
+        return jsonResponse(result);
+      })
+  );
+
+  server.registerTool(
+    "add_pull_request_comment",
+    {
+      description:
+        "Add a comment to a pull request — a general comment, a file-anchored review comment (pass filePath + line), or a reply to an existing thread (pass threadId; find it with get_pull_request_comments). WARNING: This is a WRITE operation that notifies PR participants and cannot be silently undone. Show the user the PR ID and comment text before calling, and ask for confirmation. Tip: pass dryRun: true first to preview the exact payload before posting.",
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+      inputSchema: {
+        repositoryId: z.string().describe("Repository name or ID"),
+        pullRequestId: z.number().describe("Pull request ID"),
+        content: z.string().describe("Comment text (markdown supported)"),
+        threadId: z
+          .number()
+          .optional()
+          .describe("Reply to this existing thread instead of starting a new one. Takes precedence over filePath."),
+        filePath: z
+          .string()
+          .optional()
+          .describe("Anchor the comment to this file in the PR diff, repo-relative with leading slash, e.g. /src/index.ts"),
+        line: z
+          .number()
+          .optional()
+          .describe("Line number in the file (new version of the diff) to anchor to. Only used with filePath; defaults to 1."),
+        dryRun: dryRunParam,
+      },
+    },
+    (input) =>
+      withAudit(provider, "add_pull_request_comment", input, () => withErrorHandling(async () => {
+        const { repositoryId, pullRequestId, content, threadId, filePath, line, dryRun } = input;
+        const { api, project } = await provider.getGitContext();
+
+        if (threadId !== undefined) {
+          // Reply mode
+          const comment = { content, commentType: CommentType.Text };
+
+          if (dryRun) {
+            return dryRunResponse({
+              action: "WOULD_REPLY_TO_PR_THREAD",
+              wouldBe: { project, repositoryId, pullRequestId, threadId, payload: comment },
+              notes: "No reply posted, no notifications sent. Re-call with dryRun omitted or false to post.",
+            });
+          }
+
+          const created = await api.createComment(
+            comment,
+            repositoryId,
+            pullRequestId,
+            threadId,
+            project
+          );
+
+          return jsonResponse({
+            action: "REPLY_ADDED",
+            pullRequestId,
+            threadId,
+            commentId: created.id,
+            author: created.author?.displayName,
+            publishedDate: toIso(created.publishedDate),
+          });
+        }
+
+        // New thread mode (general or file-anchored)
+        const thread = {
+          comments: [{ content, commentType: CommentType.Text }],
+          status: CommentThreadStatus.Active,
+          ...(filePath
+            ? {
+                threadContext: {
+                  filePath,
+                  rightFileStart: { line: line ?? 1, offset: 1 },
+                  rightFileEnd: { line: line ?? 1, offset: 1 },
+                },
+              }
+            : {}),
+        };
+
+        if (dryRun) {
+          return dryRunResponse({
+            action: "WOULD_ADD_PR_COMMENT",
+            wouldBe: { project, repositoryId, pullRequestId, payload: thread },
+            notes: "No comment posted, no notifications sent. Re-call with dryRun omitted or false to post.",
+          });
+        }
+
+        const created = await api.createThread(
+          thread,
+          repositoryId,
+          pullRequestId,
+          project
+        );
+
+        return jsonResponse({
+          action: "COMMENT_ADDED",
+          pullRequestId,
+          threadId: created.id,
+          status: created.status,
+          filePath: created.threadContext?.filePath,
+          commentId: created.comments?.[0]?.id,
+        });
+      }))
   );
 
   server.registerTool(

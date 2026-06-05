@@ -29,7 +29,7 @@ export function registerTfvcPrompts(
               "",
               "This task is ADVISORY and READ-ONLY. Use only this server's read tools — do not modify anything, fetch a raw URL, or call the Azure DevOps REST API directly (a raw call won't carry this session's auth).",
               "",
-              "Use tfvc_get_changeset for the details (check-in comment and associated work items) and tfvc_get_changeset_changes for the file-change list. Then write a summary covering: its purpose (from the check-in comment and linked work items), the files it touches, and any scope or risk notes.",
+              "Use tfvc_get_changeset for the details — it returns the check-in comment, associated work items, AND the file-change list (up to ~100 files) in one call. Only if the changeset is larger than that, page through the rest with tfvc_get_changeset_changes. Then write a summary covering: its purpose (from the check-in comment and linked work items), the files it touches, and any scope or risk notes.",
               "",
               `Ground every statement in the changeset data — the check-in comment, file paths, or linked work-item IDs. Where the purpose is not stated, write "not specified" rather than guessing.`,
             ].join("\n"),
