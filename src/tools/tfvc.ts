@@ -165,7 +165,27 @@ export function registerTfvcTools(server: McpServer, provider: IConnectionProvid
           includeWorkItems
         );
 
-        return jsonResponse(changeset);
+        return jsonResponse({
+          changesetId: changeset.changesetId,
+          author: changeset.author?.displayName,
+          checkedInBy: changeset.checkedInBy?.displayName,
+          createdDate: changeset.createdDate,
+          comment: changeset.comment,
+          checkinNotes: changeset.checkinNotes,
+          policyOverride: changeset.policyOverride?.comment,
+          workItems: changeset.workItems?.map((wi) => ({
+            id: wi.id,
+            title: wi.title,
+            state: wi.state,
+            workItemType: wi.workItemType,
+          })),
+          changes: changeset.changes?.map((change) => ({
+            changeType: change.changeType,
+            path: change.item?.path,
+            version: change.item?.version,
+          })),
+          url: changeset.url,
+        });
       })
   );
 
@@ -256,25 +276,6 @@ export function registerTfvcTools(server: McpServer, provider: IConnectionProvid
         }));
 
         return jsonResponse(result);
-      })
-  );
-
-  server.registerTool(
-    "tfvc_get_changeset_work_items",
-    {
-      description: "Get work items associated with a specific TFVC changeset",
-      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: true },
-      inputSchema: {
-        changesetId: z.number().describe("Changeset ID"),
-      },
-    },
-    ({ changesetId }) =>
-      withErrorHandling(async () => {
-        const { api } = await provider.getTfvcContext();
-
-        const workItems = await api.getChangesetWorkItems(changesetId);
-
-        return jsonResponse(workItems);
       })
   );
 
@@ -408,6 +409,64 @@ export function registerTfvcTools(server: McpServer, provider: IConnectionProvid
         };
 
         return jsonResponse(result);
+      })
+  );
+
+  server.registerTool(
+    "tfvc_get_shelveset_file",
+    {
+      description:
+        "Get the shelved (pending, not-yet-checked-in) content of a single file from a TFVC shelveset. Use tfvc_get_shelveset first to find the changed file paths, then read only the files you need to review.",
+      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: true },
+      inputSchema: {
+        shelvesetId: z
+          .string()
+          .describe("Shelveset ID (format: name;owner)"),
+        path: z
+          .string()
+          .describe("TFVC file path as listed in the shelveset's changes, e.g. $/MyProject/Main/src/app.ts"),
+        maxBytes: z
+          .number()
+          .optional()
+          .describe("Truncate file content to this many characters (default uses FILE_CONTENT_TRUNCATION_LIMIT)"),
+      },
+    },
+    ({ shelvesetId, path, maxBytes }) =>
+      withErrorHandling(async () => {
+        const { api, project } = await provider.getTfvcContext();
+
+        const versionDescriptor = {
+          version: shelvesetId,
+          versionType: TfvcVersionType.Shelveset,
+        };
+
+        const stream = await api.getItemContent(
+          path,
+          project,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          versionDescriptor
+        );
+
+        if (!stream) {
+          return textResponse(`File not found in shelveset ${shelvesetId}: ${path}`);
+        }
+
+        const chunks: Buffer[] = [];
+        for await (const chunk of stream) {
+          chunks.push(Buffer.from(chunk));
+        }
+        const content = Buffer.concat(chunks).toString("utf-8");
+
+        const limit = maxBytes ?? FILE_CONTENT_TRUNCATION_LIMIT;
+        const output =
+          content.length > limit
+            ? content.substring(0, limit) + "\n... [truncated, file too large]"
+            : content;
+
+        return textResponse(output);
       })
   );
 

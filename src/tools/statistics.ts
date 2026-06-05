@@ -1,10 +1,9 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { IConnectionProvider } from "../connection/provider.js";
-import { withErrorHandling, jsonResponse, textResponse } from "../utils/tool-response.js";
+import { withErrorHandling, jsonResponse } from "../utils/tool-response.js";
 import { sanitizeWiqlValue } from "../utils/wiql.js";
-import { topParam } from "../utils/schemas.js";
-import { extractDisplayValue, batchGetWorkItems } from "../utils/work-item-helpers.js";
+import { batchGetWorkItems } from "../utils/work-item-helpers.js";
 import { makeProgressReporter } from "../utils/progress.js";
 import { LARGE_RESULT_HINT_THRESHOLD, WIQL_STATISTICS_TOP } from "../constants.js";
 
@@ -119,211 +118,9 @@ function buildNarrowingHints(
   return hints;
 }
 
-// --- Helper: WIQL builders ---
+// --- Tool registration ---
 
-function buildSprintWiql(workItemType?: string, states?: string[]): string {
-  let wiql = `SELECT [System.Id], [System.Title], [System.State], [System.WorkItemType], [System.AssignedTo], [Microsoft.VSTS.Scheduling.RemainingWork], [Microsoft.VSTS.Common.Priority] FROM WorkItems WHERE [System.IterationPath] = @CurrentIteration AND [System.AssignedTo] = @Me`;
-
-  if (workItemType) {
-    wiql += ` AND [System.WorkItemType] = '${sanitizeWiqlValue(workItemType)}'`;
-  }
-  if (states && states.length > 0) {
-    const stateFilter = states
-      .map((s) => `'${sanitizeWiqlValue(s)}'`)
-      .join(", ");
-    wiql += ` AND [System.State] IN (${stateFilter})`;
-  }
-
-  wiql += ` ORDER BY [Microsoft.VSTS.Common.Priority] ASC, [System.ChangedDate] DESC`;
-  return wiql;
-}
-
-// --- Tool registrations ---
-
-export function registerConvenienceTools(server: McpServer, provider: IConnectionProvider): void {
-  server.registerTool(
-    "get_my_sprint_items",
-    {
-      description: "Get all work items assigned to you in the current sprint/iteration. Optionally filter by work item type.",
-      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: true },
-      inputSchema: {
-        workItemType: z
-          .string()
-          .optional()
-          .describe(
-            "Filter by type: 'Task', 'Bug', 'User Story', etc. Leave empty for all types."
-          ),
-        states: z
-          .array(z.string())
-          .optional()
-          .describe(
-            "Filter by states, e.g. ['Active', 'New']. Leave empty for all states."
-          ),
-      },
-    },
-    ({ workItemType, states }) =>
-      withErrorHandling(async () => {
-        const { api, project } = await provider.getWorkItemContext();
-
-        const wiql = buildSprintWiql(workItemType, states);
-
-        const queryResult = await api.queryByWiql(
-          { query: wiql },
-          { project }
-        );
-
-        if (
-          !queryResult.workItems ||
-          queryResult.workItems.length === 0
-        ) {
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: "No work items found in the current sprint assigned to you.",
-              },
-            ],
-          };
-        }
-
-        const ids = queryResult.workItems
-          .map((wi) => wi.id)
-          .filter((id): id is number => id !== undefined);
-
-        const items = await api.getWorkItems(
-          ids,
-          [
-            "System.Id",
-            "System.Title",
-            "System.State",
-            "System.WorkItemType",
-            "System.AssignedTo",
-            "System.Tags",
-            "Microsoft.VSTS.Common.Priority",
-            "Microsoft.VSTS.Scheduling.RemainingWork",
-            "Microsoft.VSTS.Scheduling.OriginalEstimate",
-          ],
-          undefined,
-          undefined,
-          undefined,
-          project
-        );
-
-        const result = (items || []).map((wi) => ({
-          id: wi.id,
-          type: wi.fields?.["System.WorkItemType"],
-          title: wi.fields?.["System.Title"],
-          state: wi.fields?.["System.State"],
-          priority: wi.fields?.["Microsoft.VSTS.Common.Priority"],
-          remainingWork: wi.fields?.["Microsoft.VSTS.Scheduling.RemainingWork"],
-          originalEstimate:
-            wi.fields?.["Microsoft.VSTS.Scheduling.OriginalEstimate"],
-          tags: wi.fields?.["System.Tags"],
-        }));
-
-        return jsonResponse(result);
-      })
-  );
-
-  server.registerTool(
-    "search_work_items_by_tag",
-    {
-      description: "Search work items by one or more tags. Returns matching items across all iterations.",
-      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: true },
-      inputSchema: {
-        tags: z
-          .array(z.string())
-          .describe("Tags to search for (items matching ANY of these tags)"),
-        workItemType: z
-          .string()
-          .optional()
-          .describe("Filter by type: 'Bug', 'Task', 'User Story', etc."),
-        state: z
-          .string()
-          .optional()
-          .describe("Filter by state: 'Active', 'New', 'Closed', etc."),
-        top: z
-          .number()
-          .optional()
-          .default(50)
-          .describe("Maximum number of results"),
-      },
-    },
-    ({ tags, workItemType, state, top }) =>
-      withErrorHandling(async () => {
-        const { api, project } = await provider.getWorkItemContext();
-
-        const tagConditions = tags
-          .map((tag) => `[System.Tags] CONTAINS '${sanitizeWiqlValue(tag)}'`)
-          .join(" OR ");
-
-        let wiql = `SELECT [System.Id], [System.Title], [System.State], [System.WorkItemType], [System.Tags], [System.AssignedTo] FROM WorkItems WHERE (${tagConditions})`;
-
-        if (workItemType) {
-          wiql += ` AND [System.WorkItemType] = '${sanitizeWiqlValue(workItemType)}'`;
-        }
-        if (state) {
-          wiql += ` AND [System.State] = '${sanitizeWiqlValue(state)}'`;
-        }
-
-        wiql += ` ORDER BY [System.ChangedDate] DESC`;
-
-        const queryResult = await api.queryByWiql(
-          { query: wiql },
-          { project },
-          undefined,
-          top
-        );
-
-        if (
-          !queryResult.workItems ||
-          queryResult.workItems.length === 0
-        ) {
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: `No work items found with tags: ${tags.join(", ")}`,
-              },
-            ],
-          };
-        }
-
-        const ids = queryResult.workItems
-          .map((wi) => wi.id)
-          .filter((id): id is number => id !== undefined);
-
-        const allItems = await batchGetWorkItems(
-          api,
-          ids,
-          [
-            "System.Id",
-            "System.Title",
-            "System.State",
-            "System.WorkItemType",
-            "System.Tags",
-            "System.AssignedTo",
-            "System.AreaPath",
-            "System.IterationPath",
-          ],
-          project
-        );
-
-        const result = allItems.map((wi) => ({
-          id: wi.id,
-          type: wi.fields?.["System.WorkItemType"],
-          title: wi.fields?.["System.Title"],
-          state: wi.fields?.["System.State"],
-          tags: wi.fields?.["System.Tags"],
-          assignedTo: extractDisplayValue(wi.fields?.["System.AssignedTo"]),
-          areaPath: wi.fields?.["System.AreaPath"],
-          iterationPath: wi.fields?.["System.IterationPath"],
-        }));
-
-        return jsonResponse(result);
-      })
-  );
-
+export function registerStatisticsTools(server: McpServer, provider: IConnectionProvider): void {
   server.registerTool(
     "get_work_item_statistics",
     {
@@ -478,20 +275,6 @@ export function registerConvenienceTools(server: McpServer, provider: IConnectio
         }
 
         return jsonResponse(result);
-      })
-  );
-
-  server.registerTool(
-    "get_current_user",
-    {
-      description: "Get the identity of the authenticated Azure DevOps user (the PAT owner). Returns displayName, id, and uniqueName. Useful when you need the 'me' identity explicitly; most owner/author filter params also accept '@me' directly.",
-      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: true },
-      inputSchema: {},
-    },
-    () =>
-      withErrorHandling(async () => {
-        const user = await provider.resolveCurrentUser();
-        return jsonResponse(user);
       })
   );
 }

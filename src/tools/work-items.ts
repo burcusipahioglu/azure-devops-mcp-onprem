@@ -36,12 +36,18 @@ export function registerWorkItemTools(server: McpServer, provider: IConnectionPr
         query: z
           .string()
           .describe(
-            "WIQL query string. IMPORTANT: For AreaPath/IterationPath fields use '=' or 'UNDER' operator (NOT 'CONTAINS'). Example: SELECT [System.Id], [System.Title] FROM WorkItems WHERE [System.AreaPath] UNDER 'MyProject\\MyArea'"
+            "WIQL query string. IMPORTANT: For AreaPath/IterationPath fields use '=' or 'UNDER' operator (NOT 'CONTAINS'). Example: SELECT [System.Id], [System.Title] FROM WorkItems WHERE [System.AreaPath] UNDER 'MyProject\\MyArea'. Macros: @Me (current user), @CurrentIteration, @Today."
+          ),
+        fields: z
+          .array(z.string())
+          .optional()
+          .describe(
+            "Field reference names to return per item, e.g. ['System.Title', 'Microsoft.VSTS.Common.Priority', 'Microsoft.VSTS.Scheduling.RemainingWork']. Omit for the default set (Id, Title, State, AssignedTo, WorkItemType, CreatedDate, ChangedDate). Note: the WIQL SELECT clause does NOT control returned fields — use this parameter."
           ),
         top: topParam(50),
       },
     },
-    ({ query, top }, extra) =>
+    ({ query, fields, top }, extra) =>
       withErrorHandling(async () => {
         const { api, project } = await provider.getWorkItemContext();
 
@@ -67,33 +73,50 @@ export function registerWorkItemTools(server: McpServer, provider: IConnectionPr
           return textResponse("No work items found.");
         }
 
+        const customFields = fields !== undefined && fields.length > 0;
+        const fetchFields = customFields
+          ? [...new Set(["System.Id", ...fields])]
+          : [
+              "System.Id",
+              "System.Title",
+              "System.State",
+              "System.AssignedTo",
+              "System.WorkItemType",
+              "System.CreatedDate",
+              "System.ChangedDate",
+            ];
+
         const report = makeProgressReporter(extra);
         const allWorkItems = await batchGetWorkItems(
           api,
           ids,
-          [
-            "System.Id",
-            "System.Title",
-            "System.State",
-            "System.AssignedTo",
-            "System.WorkItemType",
-            "System.CreatedDate",
-            "System.ChangedDate",
-          ],
+          fetchFields,
           project,
           undefined,
           (fetched, total) => report(fetched, total, `Fetched ${fetched}/${total} work items`)
         );
 
-        const result = allWorkItems.map((wi) => ({
-          id: wi.id,
-          type: wi.fields?.["System.WorkItemType"],
-          title: wi.fields?.["System.Title"],
-          state: wi.fields?.["System.State"],
-          assignedTo: extractDisplayValue(wi.fields?.["System.AssignedTo"]),
-          createdDate: wi.fields?.["System.CreatedDate"],
-          changedDate: wi.fields?.["System.ChangedDate"],
-        }));
+        // Custom projection: return requested fields keyed by reference name.
+        // Identity fields (AssignedTo etc.) collapse to displayName.
+        const result = customFields
+          ? allWorkItems.map((wi) => ({
+              id: wi.id,
+              fields: Object.fromEntries(
+                Object.entries(wi.fields ?? {}).map(([k, v]) => [
+                  k,
+                  extractDisplayValue(v),
+                ])
+              ),
+            }))
+          : allWorkItems.map((wi) => ({
+              id: wi.id,
+              type: wi.fields?.["System.WorkItemType"],
+              title: wi.fields?.["System.Title"],
+              state: wi.fields?.["System.State"],
+              assignedTo: extractDisplayValue(wi.fields?.["System.AssignedTo"]),
+              createdDate: wi.fields?.["System.CreatedDate"],
+              changedDate: wi.fields?.["System.ChangedDate"],
+            }));
 
         return jsonResponse(result);
       })

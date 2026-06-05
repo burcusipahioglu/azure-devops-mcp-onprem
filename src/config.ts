@@ -5,7 +5,6 @@ export const ALL_DOMAINS = [
   "pipelines",
   "wiki",
   "test_plans",
-  "convenience",
 ] as const;
 
 export type DomainName = (typeof ALL_DOMAINS)[number];

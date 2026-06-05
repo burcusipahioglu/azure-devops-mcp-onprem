@@ -86,7 +86,24 @@ export function registerTestManagementTools(server: McpServer, provider: IConnec
 
         const plan = await api.getTestPlanById(project, planId);
 
-        return jsonResponse(plan);
+        return jsonResponse({
+          id: plan.id,
+          name: plan.name,
+          state: plan.state,
+          areaPath: plan.areaPath,
+          iteration: plan.iteration,
+          startDate: plan.startDate,
+          endDate: plan.endDate,
+          owner: plan.owner?.displayName,
+          rootSuite: plan.rootSuite
+            ? { id: plan.rootSuite.id, name: plan.rootSuite.name }
+            : undefined,
+          description: plan.description,
+          buildDefinition: plan.buildDefinition
+            ? { id: plan.buildDefinition.id, name: plan.buildDefinition.name }
+            : undefined,
+          revision: plan.revision,
+        });
       })
   );
 

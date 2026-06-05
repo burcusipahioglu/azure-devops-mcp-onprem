@@ -7,7 +7,7 @@
 [![MCP](https://img.shields.io/badge/MCP-Model_Context_Protocol-8B5CF6)](https://modelcontextprotocol.io/)
 [![Azure DevOps](https://img.shields.io/badge/Azure_DevOps-Server_2022.2-0078D7?logo=azure-devops&logoColor=white)](https://learn.microsoft.com/en-us/azure/devops/server/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Tools](https://img.shields.io/badge/Tools-50-green)](https://github.com/burcusipahioglu/azure-devops-mcp-onprem#tool-reference)
+[![Tools](https://img.shields.io/badge/Tools-51-green)](https://github.com/burcusipahioglu/azure-devops-mcp-onprem#tool-reference)
 [![npm version](https://img.shields.io/npm/v/@burcusg/azure-devops-mcp-onprem.svg)](https://www.npmjs.com/package/@burcusg/azure-devops-mcp-onprem)
 
 **Bring on-premises Azure DevOps Server to your AI assistant.**
@@ -27,8 +27,8 @@ Query work items, repositories, and pipelines in natural language — running lo
 
 | | |
 |---|---|
-| **50 tools / 7 domains** | Work Items · Git · **TFVC** · Pipelines · Wiki · Test Plans · Convenience |
-| **TFVC native** | 11 dedicated tools — shelvesets, changesets, labels, branches. The reason this server exists. |
+| **46 tools / 6 domains** | Work Items · Git · **TFVC** · Pipelines · Wiki · Test Plans |
+| **TFVC native** | 11 dedicated tools — shelvesets (incl. shelved file content), changesets, labels, branches. The reason this server exists. |
 | **Profile-based secrets** | `AZURE_DEVOPS_PROFILE=name` → gitignored `.env.<name>`; no PAT in cloud-synced `mcp.json`. Multi-instance is a natural byproduct. |
 | **Write safety** | 6 layers — MCP annotations · confirmation directive · readonly kill switch · rate limit · dry-run · audit log |
 | **AI clients** | Claude (Code/Desktop), GitHub Copilot, Cursor, Visual Studio Code — any MCP-compatible client |
@@ -49,8 +49,8 @@ Query work items, repositories, and pipelines in natural language — running lo
 
 ```mermaid
 mindmap
-  root((Azure DevOps<br/>MCP Server<br/>50 Tools))
-    **Work Items — 8**
+  root((Azure DevOps<br/>MCP Server<br/>46 Tools))
+    **Work Items — 9**
       query_work_items
       get_work_item
       create_work_item
@@ -59,6 +59,7 @@ mindmap
       add_work_item_comment
       link_work_items
       get_work_item_history
+      get_work_item_statistics
     **Git — 10**
       list_repositories
       list_branches
@@ -76,10 +77,10 @@ mindmap
       tfvc_get_changeset
       tfvc_list_changesets
       tfvc_get_changeset_changes
-      tfvc_get_changeset_work_items
       tfvc_list_branches
       tfvc_list_shelvesets
       tfvc_get_shelveset
+      tfvc_get_shelveset_file
       tfvc_list_labels
       get_work_item_changesets
     **Pipelines — 5**
@@ -88,10 +89,7 @@ mindmap
       get_build
       list_builds
       list_releases
-    **Convenience — 4**
-      get_my_sprint_items
-      search_work_items_by_tag
-      get_work_item_statistics
+    **Core — 1**
       get_current_user
     **Test Management — 7**
       list_test_plans
@@ -101,33 +99,31 @@ mindmap
       list_test_runs
       get_test_results
       add_test_cases_to_suite
-    **Wiki — 5**
+    **Wiki — 3**
       list_wikis
       get_wiki_page
-      wiki_browse
-      get_wiki_page_stats
-      search_wiki_pages
+      list_wiki_pages
 ```
 
 Full per-tool parameter reference: [Tool Reference ↓](#tool-reference)
 
 ### Restrict tools per role
 
-Set `AZURE_DEVOPS_ENABLED_DOMAINS` to a comma-separated list — disabled domains aren't registered, trimming the AI client's tool list and reducing tool-selection confusion. Default loads all 7.
+Set `AZURE_DEVOPS_ENABLED_DOMAINS` to a comma-separated list — disabled domains aren't registered, trimming the AI client's tool list and reducing tool-selection confusion. Default loads all 6. `get_current_user` is core and always registered.
 
 | Role | Domains |
 |------|---------|
-| Project manager | `work_items,convenience,wiki` |
-| Developer (TFVC) | `work_items,tfvc,pipelines,convenience` |
-| Developer (Git) | `work_items,git,pipelines,convenience` |
+| Project manager | `work_items,wiki` |
+| Developer (TFVC) | `work_items,tfvc,pipelines` |
+| Developer (Git) | `work_items,git,pipelines` |
 | QA / tester | `work_items,test_plans,git` |
 | DevOps / release | `work_items,pipelines,git,tfvc` |
-| Read-only / analyst | `work_items,wiki,convenience` |
+| Read-only / analyst | `work_items,wiki` |
 
 Unknown domain names fail at startup — no silent typos. Startup log reports what loaded:
 
 ```
-Enabled domains (4/7): work_items, tfvc, pipelines, convenience
+Enabled domains (3/6): work_items, tfvc, pipelines
 Disabled domains: git, wiki, test_plans
 ```
 
@@ -153,7 +149,7 @@ Prompts are reusable, **advisory and read-only** workflows surfaced as slash com
 
 Point `AZURE_DEVOPS_RESOURCE_DIR` at a folder and every `*.md` file in it is exposed as an MCP resource at `template://<filename>` (e.g. `release-checklist.md` → `template://release-checklist`). Use this to share team templates and checklists with the AI without baking them into the server.
 
-One template is wired to a prompt: dropping a **`risk-impact.md`** file in that folder enables the conditional `risk_impact_analysis` prompt (work_items domain), which reads `template://risk-impact` and fills it from work-item evidence. No template file → the prompt simply doesn't appear. The template's contents are yours; the server only loads and serves them.
+One template is wired to a prompt: dropping a **`risk-impact.md`** file in that folder enables the conditional `risk_impact_analysis` prompt (work_items domain), which reads `template://risk-impact` and fills it from work-item evidence. Pass its optional `shelvesetName` argument to also weigh the actual pending change (read via `tfvc_get_shelveset_file`) against the work item's stated intent. No template file → the prompt simply doesn't appear. The template's contents are yours; the server only loads and serves them.
 
 ---
 
@@ -163,8 +159,8 @@ One template is wired to a prompt: dropping a **`risk-impact.md`** file in that 
 
 11 dedicated TFVC tools:
 
-- **Shelvesets** — `tfvc_list_shelvesets`, `tfvc_get_shelveset` (with file changes + work item links)
-- **Changesets** — `tfvc_list_changesets`, `tfvc_get_changeset`, `tfvc_get_changeset_changes`, `tfvc_get_changeset_work_items`
+- **Shelvesets** — `tfvc_list_shelvesets`, `tfvc_get_shelveset` (file changes + work item links), `tfvc_get_shelveset_file` (shelved, not-yet-checked-in file content — AI review before check-in, a workflow TFVC never had)
+- **Changesets** — `tfvc_list_changesets`, `tfvc_get_changeset` (incl. linked work items), `tfvc_get_changeset_changes`
 - **Browse & files** — `tfvc_browse`, `tfvc_get_file` (at any changeset version)
 - **Labels** — `tfvc_list_labels`
 - **Branches** — `tfvc_list_branches` (with children, including deleted)
@@ -187,7 +183,7 @@ AZURE_DEVOPS_ORG_URL=https://tfs-1.example.com/tfs/ProductACollection
 AZURE_DEVOPS_PROJECT=Product A
 AZURE_DEVOPS_PAT=<pat-for-product-a>
 # Optional per-profile domain restriction
-AZURE_DEVOPS_ENABLED_DOMAINS=work_items,tfvc,pipelines,convenience
+AZURE_DEVOPS_ENABLED_DOMAINS=work_items,tfvc,pipelines
 ```
 
 `mcp.json` (commitable):
@@ -247,7 +243,7 @@ Six layers. The LLM cannot bypass the server-side ones — they short-circuit be
 
 | Layer | Scope | Enable |
 |-------|-------|--------|
-| **MCP annotations** | All 50 tools tagged with `readOnlyHint` / `destructiveHint` / `idempotentHint` — clients can skip read confirmations, warn on destructive writes | Always on |
+| **MCP annotations** | All 46 tools tagged with `readOnlyHint` / `destructiveHint` / `idempotentHint` — clients can skip read confirmations, warn on destructive writes | Always on |
 | **Confirmation directive** | Every write's description tells the LLM to show payload and ask before calling | Always on |
 | **Readonly mode** | Server refuses all 7 write tools with a clear error; reads unaffected. CI, demos, sandbox, emergency stop | `AZURE_DEVOPS_MODE=readonly` |
 | **Rate limit** | Global sliding 60s window across all writes — runaway-loop fence, not a throughput regulator | `AZURE_DEVOPS_RATE_LIMIT_WRITES_PER_MIN=10` (default; `0` disables) |
@@ -288,7 +284,7 @@ Technically works against `dev.azure.com`, but **this server isn't positioned fo
 - **PAT-only auth** — many cloud tenants require Microsoft Entra ID, which this server doesn't yet support.
 - **Microsoft ships [`@azure-devops/mcp`](https://github.com/microsoft/azure-devops-mcp)** for cloud — officially maintained, Entra ID, broader cloud-specific coverage.
 
-Use this server against cloud only if you specifically need `@me`, profile-based multi-tenant config, or a convenience tool the official server lacks.
+Use this server against cloud only if you specifically need `@me`, profile-based multi-tenant config, or a tool the official server lacks.
 
 ---
 
@@ -306,12 +302,12 @@ Pick one path:
 
 | Scope | For |
 |-------|-----|
-| Work Items (read & write) | Work item tools, convenience tools, WIQL queries |
+| Work Items (read & write) | Work item tools, WIQL queries, statistics |
 | Code (read & write) | Git tools, **TFVC tools**, PR creation |
 | Build (read & execute) | Pipeline tools, `queue_build` |
 | Release (read) | Release listing |
 | Test Management (read & write) | Test plans, suites, runs, results; add test cases to a suite |
-| Wiki (read & write) | Wiki tools |
+| Wiki (read) | Wiki tools |
 
 Create the PAT at `https://<your-tfs>/_usersSettings/tokens`. Set an expiration ≤ 90 days and rotate regularly.
 
@@ -411,17 +407,17 @@ Quick Start config template (npm + credential file):
 }
 ```
 
-Restart the client. All 50 tools appear in the tool picker. Server name is auto-detected from `AZURE_DEVOPS_ORG_URL` (e.g. `https://dev.azure.com/acme` → `acme`); override with `AZURE_DEVOPS_SERVER_NAME`.
+Restart the client. All 46 tools appear in the tool picker. Server name is auto-detected from `AZURE_DEVOPS_ORG_URL` (e.g. `https://dev.azure.com/acme` → `acme`); override with `AZURE_DEVOPS_SERVER_NAME`.
 
 ---
 
 ## Tool Reference
 
-### Work Items (8 tools)
+### Work Items (9 tools)
 
 | Tool | Description | Key Parameters |
 |------|-------------|----------------|
-| `query_work_items` | Execute a WIQL query | `query`, `top` |
+| `query_work_items` | Execute a WIQL query (`@Me`, `@CurrentIteration`, `@Today` macros) | `query`, `fields` (projection per item), `top` |
 | `get_work_item` | Get work item by ID | `id`, `expand` (none/relations/fields/links/all) |
 | `create_work_item` | Create a new work item | `type`, `title`, `description`, `assignedTo` (accepts `@me`), `areaPath`, `iterationPath` |
 | `update_work_item` | Update work item fields (returns before/after diff) | `id`, `fields` (key-value map) |
@@ -429,6 +425,7 @@ Restart the client. All 50 tools appear in the tool picker. Server name is auto-
 | `add_work_item_comment` | Add a comment | `workItemId`, `text` |
 | `link_work_items` | Link two work items | `sourceId`, `targetId`, `linkType` |
 | `get_work_item_history` | Full change audit trail (who/what/when with old/new values) | `workItemId`, `top`, `skip` |
+| `get_work_item_statistics` | Work item counts by area path (handles 20K+ items) | `workItemTypes`, `days`, `states`, `areaPathPrefix`, `areaPathContains`, `groupByDepth`, `topAreas` |
 
 ### Git (6 tools)
 
@@ -459,10 +456,10 @@ Restart the client. All 50 tools appear in the tool picker. Server name is auto-
 | `tfvc_get_changeset` | Get changeset details | `id`, `includeWorkItems`, `includeDetails` |
 | `tfvc_list_changesets` | List changesets with filters | `itemPath`, `author` (accepts `@me`), `fromDate`, `toDate`, `top` |
 | `tfvc_get_changeset_changes` | List file changes in a changeset | `changesetId`, `top` |
-| `tfvc_get_changeset_work_items` | Get linked work items | `changesetId` |
 | `tfvc_list_branches` | List TFVC branches | `includeChildren`, `includeDeleted` |
 | `tfvc_list_shelvesets` | List shelvesets (sorted newest-first) | `owner` (accepts `@me`), `top` |
 | `tfvc_get_shelveset` | Get shelveset details + changes | `shelvesetId`, `includeWorkItems` |
+| `tfvc_get_shelveset_file` | Get shelved (pending) content of one file in a shelveset | `shelvesetId`, `path`, `maxBytes` |
 | `tfvc_list_labels` | List TFVC labels | `name`, `owner` (accepts `@me`), `top` |
 | `get_work_item_changesets` | All TFVC changesets linked to a work item (with file changes) | `workItemId`, `includeFileContent`, `maxFiles` |
 
@@ -476,13 +473,10 @@ Restart the client. All 50 tools appear in the tool picker. Server name is auto-
 | `list_builds` | List recent builds | `definitionId`, `status`, `top` |
 | `list_releases` | List releases | `definitionId`, `top` |
 
-### Convenience (4 tools)
+### Core (1 tool, always registered)
 
 | Tool | Description | Key Parameters |
 |------|-------------|----------------|
-| `get_my_sprint_items` | Get your current sprint items | `workItemType`, `states` |
-| `search_work_items_by_tag` | Search work items by tags | `tags`, `workItemType`, `state`, `top` |
-| `get_work_item_statistics` | Work item counts by area path (handles 20K+ items) | `workItemTypes`, `days`, `states`, `areaPathPrefix`, `areaPathContains`, `groupByDepth`, `topAreas` |
 | `get_current_user` | Identity of the authenticated PAT owner (displayName, id, uniqueName) | — |
 
 ### Test Management (7 tools)
@@ -497,15 +491,13 @@ Restart the client. All 50 tools appear in the tool picker. Server name is auto-
 | `get_test_results` | Test results with pass/fail and errors | `runId`, `outcomes`, `top` |
 | `add_test_cases_to_suite` | Link existing Test Case work items into a suite | `planId`, `suiteId`, `testCaseIds` |
 
-### Wiki (5 tools)
+### Wiki (3 tools)
 
 | Tool | Description | Key Parameters |
 |------|-------------|----------------|
 | `list_wikis` | List all wikis (project + code wikis) | — |
-| `get_wiki_page` | Get page content in Markdown | `wikiIdentifier`, `path` |
-| `wiki_browse` | Browse wiki page tree | `wikiIdentifier`, `path` |
-| `get_wiki_page_stats` | Page view statistics | `wikiIdentifier`, `pageId`, `pageViewsForDays` |
-| `search_wiki_pages` | Batch fetch pages with view stats | `wikiIdentifier`, `top` |
+| `get_wiki_page` | Get page content in Markdown | `wikiIdentifier`, `path`, `includeChildren` |
+| `list_wiki_pages` | All page paths (TOC) with view stats | `wikiIdentifier`, `top`, `pageViewsForDays` |
 
 ---
 
@@ -531,7 +523,7 @@ tfvc_list_shelvesets({ owner: "@me", top: 1 })
 list_commits({ repositoryId: "my-repo", branch: "feature/login", author: "@me", fromDate: "2026-04-10" })
 ```
 
-> WIQL queries (`query_work_items`, `get_my_sprint_items`) use Azure DevOps' native `@Me` macro — no server-side resolution needed.
+> WIQL queries (`query_work_items`) use Azure DevOps' native macros — `@Me`, `@CurrentIteration`, `@Today` — no server-side resolution needed. *"My sprint items"* is one query away: `... WHERE [System.IterationPath] = @CurrentIteration AND [System.AssignedTo] = @Me`.
 
 Need the identity explicitly? Call `get_current_user`.
 

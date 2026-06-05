@@ -39,7 +39,8 @@ import { registerWorkItemTools } from "./tools/work-items.js";
 import { registerGitTools } from "./tools/git.js";
 import { registerPipelineTools } from "./tools/pipelines.js";
 import { registerTfvcTools } from "./tools/tfvc.js";
-import { registerConvenienceTools } from "./tools/convenience.js";
+import { registerStatisticsTools } from "./tools/statistics.js";
+import { registerIdentityTools } from "./tools/identity.js";
 import { registerGitAdvancedTools } from "./tools/git-advanced.js";
 import { registerTestManagementTools } from "./tools/test-management.js";
 import { registerWikiTools } from "./tools/wiki.js";
@@ -74,14 +75,16 @@ const server = new McpServer(
 type ToolRegister = (server: McpServer, provider: AzureDevOpsConnectionProvider) => void;
 
 const domainModules: Record<DomainName, ToolRegister[]> = {
-  work_items: [registerWorkItemTools],
+  work_items: [registerWorkItemTools, registerStatisticsTools],
   git: [registerGitTools, registerGitAdvancedTools],
   tfvc: [registerTfvcTools],
   pipelines: [registerPipelineTools],
   wiki: [registerWikiTools],
   test_plans: [registerTestManagementTools],
-  convenience: [registerConvenienceTools],
 };
+
+// Core tools live outside the domain gate — always registered.
+registerIdentityTools(server, provider);
 
 for (const domain of ALL_DOMAINS) {
   if (!config.enabledDomains.has(domain)) continue;

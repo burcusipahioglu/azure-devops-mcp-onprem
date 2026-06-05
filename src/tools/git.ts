@@ -220,7 +220,28 @@ export function registerGitTools(server: McpServer, provider: IConnectionProvide
           project
         );
 
-        return jsonResponse(pr);
+        return jsonResponse({
+          id: pr.pullRequestId,
+          title: pr.title,
+          description: pr.description,
+          status: pr.status,
+          isDraft: pr.isDraft,
+          repository: pr.repository?.name,
+          createdBy: pr.createdBy?.displayName,
+          creationDate: pr.creationDate,
+          closedDate: pr.closedDate,
+          sourceBranch: pr.sourceRefName,
+          targetBranch: pr.targetRefName,
+          mergeStatus: pr.mergeStatus,
+          lastMergeSourceCommit: pr.lastMergeSourceCommit?.commitId,
+          reviewers: pr.reviewers?.map((r) => ({
+            name: r.displayName,
+            vote: r.vote,
+            isRequired: r.isRequired,
+          })),
+          labels: pr.labels?.map((l) => l.name),
+          url: pr.url,
+        });
       })
   );
 
