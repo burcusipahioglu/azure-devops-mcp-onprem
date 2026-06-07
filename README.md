@@ -49,17 +49,11 @@ Query work items, repositories, and pipelines in natural language — running lo
 
 ## Tools
 
-```mermaid
-mindmap
-  root((Azure DevOps<br/>MCP Server<br/>48 Tools))
-    wi(<b>Work Items — 9</b><br/>query_work_items<br/>get_work_item<br/>create_work_item<br/>update_work_item<br/>get_work_item_comments<br/>add_work_item_comment<br/>link_work_items<br/>get_work_item_history<br/>get_work_item_statistics)
-    git(<b>Git — 12</b><br/>list_repositories<br/>list_branches<br/>get_file_content<br/>list_pull_requests<br/>get_pull_request<br/>get_pull_request_comments<br/>add_pull_request_comment<br/>create_pull_request<br/>list_commits<br/>get_commit_changes<br/>compare_branches<br/>get_work_item_commits)
-    tfvc(<b>TFVC — 11</b><br/>tfvc_browse<br/>tfvc_get_file<br/>tfvc_get_changeset<br/>tfvc_list_changesets<br/>tfvc_get_changeset_changes<br/>tfvc_list_branches<br/>tfvc_list_shelvesets<br/>tfvc_get_shelveset<br/>tfvc_get_shelveset_file<br/>tfvc_list_labels<br/>get_work_item_changesets)
-    pipe(<b>Pipelines — 5</b><br/>list_build_definitions<br/>queue_build<br/>get_build<br/>list_builds<br/>list_releases)
-    test(<b>Test Management — 7</b><br/>list_test_plans<br/>get_test_plan<br/>list_test_suites<br/>list_test_cases<br/>list_test_runs<br/>get_test_results<br/>add_test_cases_to_suite)
-    wiki(<b>Wiki — 3</b><br/>list_wikis<br/>get_wiki_page<br/>list_wiki_pages)
-    core(<b>Core — 1</b><br/>get_current_user)
-```
+<p align="center">
+  <img src="docs/sdlc-ring.svg" alt="DevOps lifecycle coverage — Plan: Work Items · Code: Git, TFVC · Review: Pull Requests, Comments · Build & Release: Pipelines · Test: Test Plans · Document: Wiki" width="640">
+</p>
+
+One server across the whole cycle — **48 tools** and **8 prompts** covering Work Items, Git, TFVC, Pipelines, Test Plans, and Wiki, plus your own templates as MCP resources. Every write passes a server-side governance layer: readonly mode, dry-run preview, rate limit, audit log, and per-role domain selection — see [Write Safety](#write-safety).
 
 Full per-tool parameter reference: [Tool Reference ↓](#tool-reference)
 
