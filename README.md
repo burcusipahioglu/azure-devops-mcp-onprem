@@ -52,61 +52,13 @@ Query work items, repositories, and pipelines in natural language — running lo
 ```mermaid
 mindmap
   root((Azure DevOps<br/>MCP Server<br/>48 Tools))
-    **Work Items — 9**
-      query_work_items
-      get_work_item
-      create_work_item
-      update_work_item
-      get_work_item_comments
-      add_work_item_comment
-      link_work_items
-      get_work_item_history
-      get_work_item_statistics
-    **Git — 12**
-      list_repositories
-      list_branches
-      get_file_content
-      list_pull_requests
-      get_pull_request
-      get_pull_request_comments
-      add_pull_request_comment
-      create_pull_request
-      list_commits
-      get_commit_changes
-      compare_branches
-      get_work_item_commits
-    **TFVC — 11**
-      tfvc_browse
-      tfvc_get_file
-      tfvc_get_changeset
-      tfvc_list_changesets
-      tfvc_get_changeset_changes
-      tfvc_list_branches
-      tfvc_list_shelvesets
-      tfvc_get_shelveset
-      tfvc_get_shelveset_file
-      tfvc_list_labels
-      get_work_item_changesets
-    **Pipelines — 5**
-      list_build_definitions
-      queue_build
-      get_build
-      list_builds
-      list_releases
-    **Core — 1**
-      get_current_user
-    **Test Management — 7**
-      list_test_plans
-      get_test_plan
-      list_test_suites
-      list_test_cases
-      list_test_runs
-      get_test_results
-      add_test_cases_to_suite
-    **Wiki — 3**
-      list_wikis
-      get_wiki_page
-      list_wiki_pages
+    wi(<b>Work Items — 9</b><br/>query_work_items<br/>get_work_item<br/>create_work_item<br/>update_work_item<br/>get_work_item_comments<br/>add_work_item_comment<br/>link_work_items<br/>get_work_item_history<br/>get_work_item_statistics)
+    git(<b>Git — 12</b><br/>list_repositories<br/>list_branches<br/>get_file_content<br/>list_pull_requests<br/>get_pull_request<br/>get_pull_request_comments<br/>add_pull_request_comment<br/>create_pull_request<br/>list_commits<br/>get_commit_changes<br/>compare_branches<br/>get_work_item_commits)
+    tfvc(<b>TFVC — 11</b><br/>tfvc_browse<br/>tfvc_get_file<br/>tfvc_get_changeset<br/>tfvc_list_changesets<br/>tfvc_get_changeset_changes<br/>tfvc_list_branches<br/>tfvc_list_shelvesets<br/>tfvc_get_shelveset<br/>tfvc_get_shelveset_file<br/>tfvc_list_labels<br/>get_work_item_changesets)
+    pipe(<b>Pipelines — 5</b><br/>list_build_definitions<br/>queue_build<br/>get_build<br/>list_builds<br/>list_releases)
+    test(<b>Test Management — 7</b><br/>list_test_plans<br/>get_test_plan<br/>list_test_suites<br/>list_test_cases<br/>list_test_runs<br/>get_test_results<br/>add_test_cases_to_suite)
+    wiki(<b>Wiki — 3</b><br/>list_wikis<br/>get_wiki_page<br/>list_wiki_pages)
+    core(<b>Core — 1</b><br/>get_current_user)
 ```
 
 Full per-tool parameter reference: [Tool Reference ↓](#tool-reference)
