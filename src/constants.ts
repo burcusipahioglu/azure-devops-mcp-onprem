@@ -4,6 +4,8 @@ export const WIQL_STATISTICS_TOP = 20_000;
 
 // Content and message truncation limits
 export const FILE_CONTENT_TRUNCATION_LIMIT = 10_000;
+export const FILE_DIFF_TRUNCATION_LIMIT = 12_000;
+export const DIFF_MAX_LINES = 3_000;
 export const STACK_TRACE_TRUNCATION_LIMIT = 500;
 export const SHORT_COMMIT_SHA_LENGTH = 8;
 

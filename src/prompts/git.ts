@@ -64,7 +64,7 @@ export function registerGitPrompts(
               "",
               "Producing this review is ADVISORY and READ-ONLY: do not post, vote, approve, or call any write tool while gathering evidence and writing it — deliver the review as your reply. Use only this server's read tools; do not fetch raw URLs or call the Azure DevOps REST API directly (a raw call won't carry this session's auth and will just hit a login page).",
               "",
-              "Gather context: get_pull_request for metadata, then get_commit_changes for the changed-file list, using the lastMergeSourceCommit from the PR response as the commitId. Read the contents of only the MOST RELEVANT changed files with get_file_content — not every file — to keep token cost down; large files may be truncated by the tool, which is fine.",
+              "Gather context: get_pull_request for metadata (note its lastMergeTargetCommit and lastMergeSourceCommit), then get_commit_changes for the changed-file list, using lastMergeSourceCommit as the commitId. For the MOST RELEVANT changed files, get just the changed hunks with get_file_diff (baseVersion = lastMergeTargetCommit, targetVersion = lastMergeSourceCommit) — far cheaper than whole files and focused on the change. ONLY when a change's correctness depends on code outside the hunk, read that file in full with get_file_content. Don't review every file; large diffs/files may be truncated by the tools, which is fine.",
               "",
               "Produce a structured review with exactly these sections:",
               "- Summary — what the PR does.",

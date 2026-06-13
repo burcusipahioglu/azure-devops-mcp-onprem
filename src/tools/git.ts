@@ -12,6 +12,8 @@ import { topParam, dryRunParam } from "../utils/schemas.js";
 import { withAudit } from "../utils/audit.js";
 import { resolveMeId } from "../utils/me-resolver.js";
 import { decodeFileContent } from "../utils/file-content.js";
+import { computeUnifiedDiff } from "../utils/diff.js";
+import { FILE_DIFF_TRUNCATION_LIMIT, DIFF_MAX_LINES } from "../constants.js";
 
 // Typed-results first wave. Every field optional — server version differences
 // must never fail validation. Status enums arrive as numbers from the API.
@@ -173,6 +175,128 @@ export function registerGitTools(server: McpServer, provider: IConnectionProvide
           return textResponse(`[Binary file — content not shown: ${path}]`);
         }
         return textResponse(decoded.content);
+      })
+  );
+
+  server.registerTool(
+    "get_file_diff",
+    {
+      description:
+        "Diff a single file between two Git versions (branch names or commit SHAs) and return ONLY the changed hunks as a unified diff — far cheaper than reading both whole files. PARTIAL VIEW: shows changed lines plus a few context lines, NOT the surrounding function or related files; for the full file around a change, call get_file_content. Binary files and very large files are not diffed (the response says so). Use this to review a change; use get_file_content to understand a whole file.",
+      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: false },
+      inputSchema: {
+        repositoryId: z.string().describe("Repository name or ID"),
+        path: z
+          .string()
+          .describe("File path within the repo, e.g. /src/index.ts"),
+        baseVersion: z
+          .string()
+          .describe("Base side ('before'): branch name or commit SHA"),
+        targetVersion: z
+          .string()
+          .describe("Target side ('after'): branch name or commit SHA"),
+        contextLines: z
+          .number()
+          .optional()
+          .default(6)
+          .describe("Unchanged context lines kept around each hunk (default 6)"),
+        maxBytes: z
+          .number()
+          .optional()
+          .describe("Cap the DIFF OUTPUT (not the source files) to this many characters; default FILE_DIFF_TRUNCATION_LIMIT"),
+      },
+    },
+    ({ repositoryId, path, baseVersion, targetVersion, contextLines, maxBytes }) =>
+      withErrorHandling(async () => {
+        const { api, project } = await provider.getGitContext();
+
+        // Fetch one version's content. Returns null when the file is absent at
+        // that version (a 404 — i.e. the file was added or deleted between the
+        // two sides), so an add shows as all-insert and a delete as all-delete.
+        // The binary check runs; a huge maxBytes is passed so we diff the REAL
+        // content and cap the diff OUTPUT instead of the inputs.
+        const fetchVersion = async (
+          version: string
+        ): Promise<{ binary: boolean; content: string } | null> => {
+          const v = version.replace(/^refs\/heads\//, "");
+          const versionDescriptor = /^[0-9a-f]{7,40}$/i.test(v)
+            ? { version: v, versionType: GitVersionType.Commit }
+            : { version: v, versionType: GitVersionType.Branch };
+          let item;
+          try {
+            item = await api.getItemContent(
+              repositoryId,
+              path,
+              project,
+              undefined,
+              undefined,
+              undefined,
+              undefined,
+              undefined,
+              versionDescriptor
+            );
+          } catch (err: unknown) {
+            if ((err as { statusCode?: number })?.statusCode === 404) return null;
+            throw err;
+          }
+          if (!item) return null;
+          const chunks: Buffer[] = [];
+          for await (const chunk of item) {
+            chunks.push(Buffer.from(chunk));
+          }
+          const decoded = decodeFileContent(Buffer.concat(chunks), Number.MAX_SAFE_INTEGER);
+          return decoded.binary
+            ? { binary: true, content: "" }
+            : { binary: false, content: decoded.content };
+        };
+
+        const [base, target] = await Promise.all([
+          fetchVersion(baseVersion),
+          fetchVersion(targetVersion),
+        ]);
+
+        if (base === null && target === null) {
+          return textResponse(`File not found on either side: ${path}`);
+        }
+        if (base?.binary || target?.binary) {
+          return textResponse(`[Binary file — diff not shown: ${path}]`);
+        }
+
+        const header =
+          `diff: ${path}\n` +
+          `base: ${baseVersion}${base === null ? " (absent)" : ""} -> ` +
+          `target: ${targetVersion}${target === null ? " (absent)" : ""}`;
+
+        const result = computeUnifiedDiff(
+          base?.content ?? "",
+          target?.content ?? "",
+          contextLines
+        );
+
+        if (result.identical) {
+          return textResponse(`${header}\nNo changes — the file is identical on both sides.`);
+        }
+        if (result.tooLarge) {
+          return textResponse(
+            `${header}\n[File too large to diff (> ${DIFF_MAX_LINES} lines on one side). ` +
+              `Read each side with get_file_content and compare the regions you need.]`
+          );
+        }
+
+        const limit = maxBytes ?? FILE_DIFF_TRUNCATION_LIMIT;
+        let body = result.diff;
+        let truncated = false;
+        if (body.length > limit) {
+          body = body.slice(0, limit) + "\n... [diff truncated, exceeded limit]";
+          truncated = true;
+        }
+
+        const meta =
+          `+${result.added} -${result.removed} lines | context: ${contextLines} | ` +
+          `PARTIAL VIEW: changed hunks only — call get_file_content for surrounding code` +
+          (truncated ? " | [output truncated]" : "");
+
+        return textResponse(`${header}\n${meta}\n\n${body}`);
       })
   );
 
