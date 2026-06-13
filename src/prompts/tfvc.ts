@@ -66,7 +66,7 @@ export function registerTfvcPrompts(
               "Gather evidence efficiently — do NOT bulk-download all changed code:",
               `- get_work_item (expand "all") and get_work_item_history for #${workItemId} — description, comments, relations, and the state-change timeline (who changed what, when).`,
               "- get_work_item_changesets for the linked TFVC changesets to get the changed-file LIST. Do NOT set includeFileContent — pulling every file's content is slow and expensive.",
-              "- From that list plus what the bug is about, pick only the few files most likely at fault and read just those with tfvc_get_file at the changeset version. Don't read every file, and don't grep a bulk dump — read the suspect files directly.",
+              "- From that list plus what the bug is about, pick only the few files most likely at fault. For each, get the actual fix delta with tfvc_get_file_diff (baseVersion = the fix changeset id minus 1, targetVersion = the fix changeset id) — far cheaper than whole files and it shows exactly what the fix changed. ONLY when you need surrounding code to judge a change, read that file in full with tfvc_get_file at the changeset version. Don't read every file or grep a bulk dump.",
               "",
               "Then report exactly three sections:",
               "(a) Root cause — what went wrong at the code or design level.",

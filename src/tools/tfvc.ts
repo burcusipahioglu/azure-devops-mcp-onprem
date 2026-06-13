@@ -10,6 +10,8 @@ import { withErrorHandling, jsonResponse, textResponse, extractErrorMessage, str
 import { topParam, skipParam } from "../utils/schemas.js";
 import { resolveMe } from "../utils/me-resolver.js";
 import { decodeFileContent } from "../utils/file-content.js";
+import { computeUnifiedDiff } from "../utils/diff.js";
+import { FILE_DIFF_TRUNCATION_LIMIT, DIFF_MAX_LINES } from "../constants.js";
 
 // Helper: Extract changeset IDs from work item relations
 function extractChangesetIds(relations: unknown[] | undefined): number[] {
@@ -179,6 +181,120 @@ export function registerTfvcTools(server: McpServer, provider: IConnectionProvid
           return textResponse(`[Binary file — content not shown: ${path}]`);
         }
         return textResponse(decoded.content);
+      })
+  );
+
+  server.registerTool(
+    "tfvc_get_file_diff",
+    {
+      description:
+        "Diff a single TFVC file between two changesets and return ONLY the changed hunks as a unified diff — far cheaper than reading both whole files, and shows exactly what a changeset altered. To see what changeset N changed, pass baseVersion = N-1 and targetVersion = N. PARTIAL VIEW: changed lines plus a little context, NOT the whole file or related files; for the full file around a change, call tfvc_get_file. Binary files and very large files are reported, not diffed. Use this to review a change; use tfvc_get_file to read a whole file.",
+      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: false },
+      inputSchema: {
+        path: z
+          .string()
+          .describe("TFVC file path, e.g. $/MyProject/Main/src/app.ts"),
+        baseVersion: z
+          .string()
+          .describe("Base changeset number ('before') — e.g. the changeset just prior to a fix"),
+        targetVersion: z
+          .string()
+          .describe("Target changeset number ('after') — e.g. the fix changeset"),
+        contextLines: z
+          .number()
+          .optional()
+          .default(6)
+          .describe("Unchanged context lines kept around each hunk (default 6)"),
+        maxBytes: z
+          .number()
+          .optional()
+          .describe("Cap the DIFF OUTPUT (not the source files) to this many characters; default FILE_DIFF_TRUNCATION_LIMIT"),
+      },
+    },
+    ({ path, baseVersion, targetVersion, contextLines, maxBytes }) =>
+      withErrorHandling(async () => {
+        const { api, project } = await provider.getTfvcContext();
+
+        // Fetch one changeset version's content. null = file absent at that
+        // changeset (added or deleted), so an add shows all-insert and a delete
+        // all-delete. The binary check runs; Number.MAX_SAFE_INTEGER is passed so
+        // the REAL content is diffed and only the diff OUTPUT is capped.
+        const fetchVersion = async (
+          version: string
+        ): Promise<{ binary: boolean; content: string } | null> => {
+          let stream;
+          try {
+            stream = await api.getItemContent(
+              path,
+              project,
+              undefined,
+              undefined,
+              undefined,
+              undefined,
+              { version, versionType: TfvcVersionType.Changeset }
+            );
+          } catch (err: unknown) {
+            if ((err as { statusCode?: number })?.statusCode === 404) return null;
+            throw err;
+          }
+          if (!stream) return null;
+          const chunks: Buffer[] = [];
+          for await (const chunk of stream) {
+            chunks.push(Buffer.from(chunk));
+          }
+          const decoded = decodeFileContent(Buffer.concat(chunks), Number.MAX_SAFE_INTEGER);
+          return decoded.binary
+            ? { binary: true, content: "" }
+            : { binary: false, content: decoded.content };
+        };
+
+        const [base, target] = await Promise.all([
+          fetchVersion(baseVersion),
+          fetchVersion(targetVersion),
+        ]);
+
+        if (base === null && target === null) {
+          return textResponse(`File not found at either changeset: ${path}`);
+        }
+        if (base?.binary || target?.binary) {
+          return textResponse(`[Binary file — diff not shown: ${path}]`);
+        }
+
+        const header =
+          `diff: ${path}\n` +
+          `changeset ${baseVersion}${base === null ? " (absent)" : ""} -> ` +
+          `changeset ${targetVersion}${target === null ? " (absent)" : ""}`;
+
+        const result = computeUnifiedDiff(
+          base?.content ?? "",
+          target?.content ?? "",
+          contextLines
+        );
+
+        if (result.identical) {
+          return textResponse(`${header}\nNo changes — the file is identical at both changesets.`);
+        }
+        if (result.tooLarge) {
+          return textResponse(
+            `${header}\n[File too large to diff (> ${DIFF_MAX_LINES} lines). ` +
+              `Read each version with tfvc_get_file and compare the regions you need.]`
+          );
+        }
+
+        const limit = maxBytes ?? FILE_DIFF_TRUNCATION_LIMIT;
+        let body = result.diff;
+        let truncated = false;
+        if (body.length > limit) {
+          body = body.slice(0, limit) + "\n... [diff truncated, exceeded limit]";
+          truncated = true;
+        }
+
+        const meta =
+          `+${result.added} -${result.removed} lines | context: ${contextLines} | ` +
+          `PARTIAL VIEW: changed hunks only — call tfvc_get_file for surrounding code` +
+          (truncated ? " | [output truncated]" : "");
+
+        return textResponse(`${header}\n${meta}\n\n${body}`);
       })
   );
 
@@ -392,21 +508,35 @@ export function registerTfvcTools(server: McpServer, provider: IConnectionProvid
           .string()
           .optional()
           .describe("Filter by owner display name (e.g. 'John Smith'), not username/UID. Use the person's full display name as shown in Azure DevOps. Pass '@me' to filter to the authenticated user."),
+        name: z
+          .string()
+          .optional()
+          .describe("Filter by shelveset name (server-side). Combine with owner to pin a specific shelveset in one call instead of paging the whole list — e.g. name plus owner '@me'."),
         top: topParam(25),
         skip: skipParam(),
       },
     },
-    ({ owner, top, skip }) =>
+    ({ owner, name, top, skip }) =>
       withErrorHandling(async () => {
         const { api } = await provider.getTfvcContext();
 
         const resolvedOwner = await resolveMe(owner, provider);
-        const requestData = resolvedOwner
-          ? { owner: resolvedOwner, includeDetails: true }
-          : undefined;
+        // No includeDetails: the projection below returns only id/name/comment/
+        // owner/date/url. includeDetails made ADO fetch every shelveset's full
+        // change list — heavy and slow for owners with many shelvesets — only
+        // for it to be discarded here. Per-shelveset details come from
+        // tfvc_get_shelveset on demand.
+        //
+        // name + owner filter SERVER-SIDE, so a known shelveset is found in one
+        // call rather than paging the full list and matching client-side.
+        const requestData: Record<string, unknown> = {};
+        if (resolvedOwner) requestData.owner = resolvedOwner;
+        if (name) requestData.name = name;
 
         const shelvesets = await api.getShelvesets(
-          requestData,
+          Object.keys(requestData).length
+            ? (requestData as Parameters<typeof api.getShelvesets>[0])
+            : undefined,
           top,
           skip
         );
