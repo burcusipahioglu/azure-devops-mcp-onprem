@@ -70,8 +70,11 @@ const server = new McpServer(
   { name: config.serverName, version: SERVER_VERSION },
   {
     capabilities: {
-      prompts: { listChanged: true },
-      resources: { listChanged: true },
+      // Lists are static (every registration runs before connect), so we never
+      // emit list_changed notifications — declaring listChanged would be a false
+      // contract. Empty objects = capability present, no change notifications.
+      prompts: {},
+      resources: {},
     },
     instructions: SERVER_INSTRUCTIONS,
   }

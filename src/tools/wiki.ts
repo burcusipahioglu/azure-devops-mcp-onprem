@@ -6,13 +6,14 @@ import {
 import type { IConnectionProvider } from "../connection/provider.js";
 import { withErrorHandling, jsonResponse, textResponse } from "../utils/tool-response.js";
 import { topParam } from "../utils/schemas.js";
+import { decodeFileContent } from "../utils/file-content.js";
 
 export function registerWikiTools(server: McpServer, provider: IConnectionProvider): void {
   server.registerTool(
     "list_wikis",
     {
       description: "List all wikis in the project. Azure DevOps supports project wikis and code wikis (backed by a Git repository).",
-      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: true },
+      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: false },
       inputSchema: {},
     },
     () =>
@@ -39,7 +40,7 @@ export function registerWikiTools(server: McpServer, provider: IConnectionProvid
     "get_wiki_page",
     {
       description: "Get the content of a wiki page by path. Returns the page content in Markdown format.",
-      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: true },
+      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: false },
       inputSchema: {
         wikiIdentifier: z
           .string()
@@ -52,9 +53,13 @@ export function registerWikiTools(server: McpServer, provider: IConnectionProvid
           .optional()
           .default(false)
           .describe("Include child page paths (one level)"),
+        maxBytes: z
+          .number()
+          .optional()
+          .describe("Truncate page content to this many characters (default uses FILE_CONTENT_TRUNCATION_LIMIT)"),
       },
     },
-    ({ wikiIdentifier, path, includeChildren }) =>
+    ({ wikiIdentifier, path, includeChildren, maxBytes }) =>
       withErrorHandling(async () => {
         const { api, project } = await provider.getWikiContext();
 
@@ -79,9 +84,13 @@ export function registerWikiTools(server: McpServer, provider: IConnectionProvid
         for await (const chunk of stream) {
           chunks.push(Buffer.from(chunk));
         }
-        const content = Buffer.concat(chunks).toString("utf-8");
-
-        return textResponse(content);
+        // Wiki pages are markdown — binary is effectively impossible, but the
+        // helper's truncation guard is what we're after (a huge page must not
+        // blow the context window).
+        const decoded = decodeFileContent(Buffer.concat(chunks), maxBytes);
+        return textResponse(
+          decoded.binary ? `[Binary content not shown: ${path}]` : decoded.content
+        );
       })
   );
 
@@ -89,7 +98,7 @@ export function registerWikiTools(server: McpServer, provider: IConnectionProvid
     "list_wiki_pages",
     {
       description: "List all pages in a wiki with view statistics. Page paths encode the hierarchy (e.g. '/Architecture/Overview') — use this as the table of contents, then read specific pages with get_wiki_page. View counts help find popular or recently viewed documentation.",
-      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: true },
+      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: false },
       inputSchema: {
         wikiIdentifier: z
           .string()

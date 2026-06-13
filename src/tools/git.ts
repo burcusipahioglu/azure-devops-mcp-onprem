@@ -11,7 +11,7 @@ import { withErrorHandling, jsonResponse, textResponse, dryRunResponse, structur
 import { topParam, dryRunParam } from "../utils/schemas.js";
 import { withAudit } from "../utils/audit.js";
 import { resolveMeId } from "../utils/me-resolver.js";
-import { FILE_CONTENT_TRUNCATION_LIMIT } from "../constants.js";
+import { decodeFileContent } from "../utils/file-content.js";
 
 // Typed-results first wave. Every field optional — server version differences
 // must never fail validation. Status enums arrive as numbers from the API.
@@ -72,7 +72,7 @@ export function registerGitTools(server: McpServer, provider: IConnectionProvide
     "list_repositories",
     {
       description: "List all Git repositories in the Azure DevOps project",
-      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: true },
+      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: false },
     },
     () =>
       withErrorHandling(async () => {
@@ -95,7 +95,7 @@ export function registerGitTools(server: McpServer, provider: IConnectionProvide
     "list_branches",
     {
       description: "List branches for a Git repository",
-      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: true },
+      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: false },
       inputSchema: {
         repositoryId: z.string().describe("Repository name or ID"),
       },
@@ -121,7 +121,7 @@ export function registerGitTools(server: McpServer, provider: IConnectionProvide
     "get_file_content",
     {
       description: "Get the content of a file from a Git repository",
-      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: true },
+      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: false },
       inputSchema: {
         repositoryId: z.string().describe("Repository name or ID"),
         path: z
@@ -168,15 +168,11 @@ export function registerGitTools(server: McpServer, provider: IConnectionProvide
         for await (const chunk of item) {
           chunks.push(Buffer.from(chunk));
         }
-        const content = Buffer.concat(chunks).toString("utf-8");
-
-        const limit = maxBytes ?? FILE_CONTENT_TRUNCATION_LIMIT;
-        const output =
-          content.length > limit
-            ? content.substring(0, limit) + "\n... [truncated, file too large]"
-            : content;
-
-        return textResponse(output);
+        const decoded = decodeFileContent(Buffer.concat(chunks), maxBytes);
+        if (decoded.binary) {
+          return textResponse(`[Binary file — content not shown: ${path}]`);
+        }
+        return textResponse(decoded.content);
       })
   );
 
@@ -184,7 +180,7 @@ export function registerGitTools(server: McpServer, provider: IConnectionProvide
     "list_pull_requests",
     {
       description: "List pull requests with optional filters. Omit repositoryId to search the whole project. Filter by reviewer to find PRs assigned to a person for review.",
-      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: true },
+      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: false },
       inputSchema: {
         repositoryId: z
           .string()
@@ -261,7 +257,7 @@ export function registerGitTools(server: McpServer, provider: IConnectionProvide
     "get_pull_request",
     {
       description: "Get detailed information about a specific pull request",
-      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: true },
+      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: false },
       inputSchema: {
         repositoryId: z.string().describe("Repository name or ID"),
         pullRequestId: z.number().describe("Pull request ID"),
@@ -308,7 +304,7 @@ export function registerGitTools(server: McpServer, provider: IConnectionProvide
     {
       description:
         "List comment threads on a pull request, including file-anchored review comments and replies. System events (vote changes, ref updates) are filtered out by default.",
-      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: true },
+      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: false },
       inputSchema: {
         repositoryId: z.string().describe("Repository name or ID"),
         pullRequestId: z.number().describe("Pull request ID"),
@@ -362,7 +358,7 @@ export function registerGitTools(server: McpServer, provider: IConnectionProvide
     {
       description:
         "Add a comment to a pull request — a general comment, a file-anchored review comment (pass filePath + line), or a reply to an existing thread (pass threadId; find it with get_pull_request_comments). WARNING: This is a WRITE operation that notifies PR participants and cannot be silently undone. Show the user the PR ID and comment text before calling, and ask for confirmation. Tip: pass dryRun: true first to preview the exact payload before posting.",
-      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
       inputSchema: {
         repositoryId: z.string().describe("Repository name or ID"),
         pullRequestId: z.number().describe("Pull request ID"),
@@ -462,7 +458,7 @@ export function registerGitTools(server: McpServer, provider: IConnectionProvide
     "create_pull_request",
     {
       description: "Create a new pull request. WARNING: This is a WRITE operation that notifies reviewers and creates a record visible to the team. Show the user the repository, title, source/target branches, and reviewers before calling, and ask for confirmation. Tip: pass dryRun: true first to preview the exact payload before posting.",
-      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
       inputSchema: {
         repositoryId: z.string().describe("Repository name or ID"),
         title: z.string().describe("PR title"),

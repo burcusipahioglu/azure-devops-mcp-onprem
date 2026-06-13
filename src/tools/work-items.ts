@@ -52,7 +52,7 @@ export function registerWorkItemTools(server: McpServer, provider: IConnectionPr
     "query_work_items",
     {
       description: "Execute a WIQL (Work Item Query Language) query against Azure DevOps work items. IMPORTANT WIQL rules: [System.AreaPath] and [System.IterationPath] only support '=', '<>', and 'UNDER' operators (NOT 'CONTAINS'). Use 'UNDER' to match a path and all its children. [System.Tags] supports 'CONTAINS'. Example: [System.AreaPath] UNDER 'MyProject\\Backend'",
-      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: true },
+      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: false },
       inputSchema: {
         query: z
           .string()
@@ -150,7 +150,7 @@ export function registerWorkItemTools(server: McpServer, provider: IConnectionPr
     "get_work_item",
     {
       description: "Get a work item by ID with all fields and optional relations",
-      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: true },
+      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: false },
       inputSchema: {
         id: z.number().describe("Work item ID"),
         expand: z
@@ -191,7 +191,7 @@ export function registerWorkItemTools(server: McpServer, provider: IConnectionPr
     "create_work_item",
     {
       description: "Create a new work item in Azure DevOps. WARNING: This is a WRITE operation that creates a permanent record. You MUST confirm with the user before calling this tool — show them the type, title, and all fields you will set, and ask for explicit approval. Tip: pass dryRun: true first to preview the exact payload before creating.",
-      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
       inputSchema: {
         type: z
           .string()
@@ -308,7 +308,7 @@ export function registerWorkItemTools(server: McpServer, provider: IConnectionPr
     "update_work_item",
     {
       description: "Update an existing work item's fields. WARNING: This is a WRITE operation that modifies an existing record. You MUST confirm with the user before calling — show them the work item ID, current values of fields being changed, and the new values you will set. Ask for explicit approval. Tip: pass dryRun: true first — it returns the current values alongside the intended changes without writing.",
-      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: true },
+      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
       inputSchema: {
         id: z.number().describe("Work item ID to update"),
         fields: z
@@ -383,7 +383,7 @@ export function registerWorkItemTools(server: McpServer, provider: IConnectionPr
     "get_work_item_comments",
     {
       description: "List comments on a work item, ordered and paginated. Returns the raw CommentList (comments[], continuationToken, totalCount) so callers can page through large threads.",
-      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: true },
+      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: false },
       inputSchema: {
         workItemId: z.number().describe("Work item ID"),
         top: topParam(50),
@@ -425,7 +425,7 @@ export function registerWorkItemTools(server: McpServer, provider: IConnectionPr
     "add_work_item_comment",
     {
       description: "Add a comment to a work item. WARNING: This is a WRITE operation that notifies subscribers and cannot be silently undone. Show the user the comment text and work item ID before calling, and ask for confirmation. Tip: pass dryRun: true first to preview the exact payload before posting.",
-      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
       inputSchema: {
         workItemId: z.number().describe("Work item ID"),
         text: z.string().describe("Comment text (HTML supported)"),
@@ -459,7 +459,7 @@ export function registerWorkItemTools(server: McpServer, provider: IConnectionPr
     "link_work_items",
     {
       description: "Create a link between two work items. WARNING: This is a WRITE operation. Show the user the source ID, target ID, and link type before calling, and ask for confirmation. Tip: pass dryRun: true first to preview the exact payload before linking.",
-      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
       inputSchema: {
         sourceId: z.number().describe("Source work item ID"),
         targetId: z.number().describe("Target work item ID"),
@@ -524,7 +524,7 @@ export function registerWorkItemTools(server: McpServer, provider: IConnectionPr
     "get_work_item_history",
     {
       description: "Get the full change history of a work item — shows who changed which fields, when, and what the old/new values were. Useful for auditing and understanding how a bug or task evolved over time.",
-      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: true },
+      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: false },
       inputSchema: {
         workItemId: z.number().describe("Work item ID"),
         top: topParam(50),

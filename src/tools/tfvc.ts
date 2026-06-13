@@ -9,7 +9,7 @@ import type { IConnectionProvider } from "../connection/provider.js";
 import { withErrorHandling, jsonResponse, textResponse, extractErrorMessage, structuredResponse, toIso } from "../utils/tool-response.js";
 import { topParam, skipParam } from "../utils/schemas.js";
 import { resolveMe } from "../utils/me-resolver.js";
-import { FILE_CONTENT_TRUNCATION_LIMIT } from "../constants.js";
+import { decodeFileContent } from "../utils/file-content.js";
 
 // Helper: Extract changeset IDs from work item relations
 function extractChangesetIds(relations: unknown[] | undefined): number[] {
@@ -82,7 +82,7 @@ export function registerTfvcTools(server: McpServer, provider: IConnectionProvid
     "tfvc_browse",
     {
       description: "Browse files and folders in TFVC at a given path (like Source Control Explorer)",
-      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: true },
+      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: false },
       inputSchema: {
         scopePath: z
           .string()
@@ -130,7 +130,7 @@ export function registerTfvcTools(server: McpServer, provider: IConnectionProvid
     "tfvc_get_file",
     {
       description: "Get the content of a file from TFVC source control",
-      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: true },
+      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: false },
       inputSchema: {
         path: z
           .string()
@@ -139,9 +139,13 @@ export function registerTfvcTools(server: McpServer, provider: IConnectionProvid
           .string()
           .optional()
           .describe("Changeset number to get a specific version (defaults to latest)"),
+        maxBytes: z
+          .number()
+          .optional()
+          .describe("Truncate file content to this many characters (default uses FILE_CONTENT_TRUNCATION_LIMIT)"),
       },
     },
-    ({ path, version }) =>
+    ({ path, version, maxBytes }) =>
       withErrorHandling(async () => {
         const { api, project } = await provider.getTfvcContext();
 
@@ -170,9 +174,11 @@ export function registerTfvcTools(server: McpServer, provider: IConnectionProvid
         for await (const chunk of stream) {
           chunks.push(Buffer.from(chunk));
         }
-        const content = Buffer.concat(chunks).toString("utf-8");
-
-        return textResponse(content);
+        const decoded = decodeFileContent(Buffer.concat(chunks), maxBytes);
+        if (decoded.binary) {
+          return textResponse(`[Binary file — content not shown: ${path}]`);
+        }
+        return textResponse(decoded.content);
       })
   );
 
@@ -180,7 +186,7 @@ export function registerTfvcTools(server: McpServer, provider: IConnectionProvid
     "tfvc_get_changeset",
     {
       description: "Get details of a specific TFVC changeset including changes and associated work items",
-      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: true },
+      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: false },
       inputSchema: {
         id: z.number().describe("Changeset ID"),
         includeWorkItems: z
@@ -244,7 +250,7 @@ export function registerTfvcTools(server: McpServer, provider: IConnectionProvid
     "tfvc_list_changesets",
     {
       description: "List recent TFVC changesets with optional filters (author, date range, item path)",
-      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: true },
+      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: false },
       inputSchema: {
         itemPath: z
           .string()
@@ -303,7 +309,7 @@ export function registerTfvcTools(server: McpServer, provider: IConnectionProvid
     "tfvc_get_changeset_changes",
     {
       description: "Get the list of file changes (adds, edits, deletes) in a specific changeset",
-      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: true },
+      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: false },
       inputSchema: {
         changesetId: z.number().describe("Changeset ID"),
         top: topParam(100),
@@ -335,7 +341,7 @@ export function registerTfvcTools(server: McpServer, provider: IConnectionProvid
     "tfvc_list_branches",
     {
       description: "List TFVC items that are explicitly marked as branches (via 'Convert to Branch' in Visual Studio or `tf branch`). IMPORTANT: many TFVC projects use a folder-as-branch convention (e.g. $/Project/Main, $/Project/Dev) without marking folders as branches — those will NOT appear here. If this returns empty, the project likely uses unmarked folders; call `tfvc_browse` instead to see the actual folder structure.",
-      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: true },
+      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: false },
       inputSchema: {
         includeChildren: z
           .boolean()
@@ -380,7 +386,7 @@ export function registerTfvcTools(server: McpServer, provider: IConnectionProvid
     "tfvc_list_shelvesets",
     {
       description: "List TFVC shelvesets (pending changes stored on the server)",
-      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: true },
+      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: false },
       inputSchema: {
         owner: z
           .string()
@@ -428,7 +434,7 @@ export function registerTfvcTools(server: McpServer, provider: IConnectionProvid
     "tfvc_get_shelveset",
     {
       description: "Get details of a specific TFVC shelveset including its changes",
-      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: true },
+      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: false },
       inputSchema: {
         shelvesetId: z
           .string()
@@ -452,7 +458,18 @@ export function registerTfvcTools(server: McpServer, provider: IConnectionProvid
         const changes = await api.getShelvesetChanges(shelvesetId);
 
         const result = {
-          ...shelveset,
+          id: shelveset.id,
+          name: shelveset.name,
+          comment: shelveset.comment,
+          owner: shelveset.owner?.displayName,
+          createdDate: toIso(shelveset.createdDate),
+          url: shelveset.url,
+          workItems: shelveset.workItems?.map((wi) => ({
+            id: wi.id,
+            title: wi.title,
+            state: wi.state,
+            workItemType: wi.workItemType,
+          })),
           changes: (changes || []).map((change) => ({
             changeType: change.changeType,
             path: change.item?.path,
@@ -469,7 +486,7 @@ export function registerTfvcTools(server: McpServer, provider: IConnectionProvid
     {
       description:
         "Get the shelved (pending, not-yet-checked-in) content of a single file from a TFVC shelveset. Use tfvc_get_shelveset first to find the changed file paths, then read only the files you need to review.",
-      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: true },
+      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: false },
       inputSchema: {
         shelvesetId: z
           .string()
@@ -510,15 +527,11 @@ export function registerTfvcTools(server: McpServer, provider: IConnectionProvid
         for await (const chunk of stream) {
           chunks.push(Buffer.from(chunk));
         }
-        const content = Buffer.concat(chunks).toString("utf-8");
-
-        const limit = maxBytes ?? FILE_CONTENT_TRUNCATION_LIMIT;
-        const output =
-          content.length > limit
-            ? content.substring(0, limit) + "\n... [truncated, file too large]"
-            : content;
-
-        return textResponse(output);
+        const decoded = decodeFileContent(Buffer.concat(chunks), maxBytes);
+        if (decoded.binary) {
+          return textResponse(`[Binary file — content not shown: ${path}]`);
+        }
+        return textResponse(decoded.content);
       })
   );
 
@@ -526,7 +539,7 @@ export function registerTfvcTools(server: McpServer, provider: IConnectionProvid
     "tfvc_list_labels",
     {
       description: "List TFVC labels in the project",
-      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: true },
+      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: false },
       inputSchema: {
         name: z
           .string()
@@ -577,7 +590,7 @@ export function registerTfvcTools(server: McpServer, provider: IConnectionProvid
     "get_work_item_changesets",
     {
       description: "Get all TFVC changesets linked to a work item, including file changes and changeset details. Useful for reviewing what code changes were made for a bug fix or feature.",
-      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: true },
+      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: false },
       inputSchema: {
         workItemId: z
           .number()
@@ -596,9 +609,16 @@ export function registerTfvcTools(server: McpServer, provider: IConnectionProvid
           .describe(
             "Maximum number of changed files to include per changeset"
           ),
+        maxChangesets: z
+          .number()
+          .optional()
+          .default(10)
+          .describe(
+            "Maximum number of changesets to fetch (most recent first). A work item can link dozens of changesets; each is a separate API call, so this caps both token and call-count blowup. The response reports totalLinkedChangesets and truncated so you can raise this if needed."
+          ),
       },
     },
-    ({ workItemId, includeFileContent, maxFiles }) =>
+    ({ workItemId, includeFileContent, maxFiles, maxChangesets }) =>
       withErrorHandling(async () => {
         const { api: witApi, project } = await provider.getWorkItemContext();
         const { api: tfvcApi } = await provider.getTfvcContext();
@@ -635,9 +655,16 @@ export function registerTfvcTools(server: McpServer, provider: IConnectionProvid
           });
         }
 
+        // Relation order is link-creation order, not newest. TFVC changeset IDs
+        // are monotonic, so sort descending and take the most recent N — the
+        // loop is otherwise unbounded (each changeset = a separate API call).
+        const selectedIds = [...changesetIds]
+          .sort((a, b) => b - a)
+          .slice(0, maxChangesets);
+
         const changesetResults: Record<string, unknown>[] = [];
 
-        for (const changesetId of changesetIds) {
+        for (const changesetId of selectedIds) {
 
           try {
             const changeset = await tfvcApi.getChangeset(
@@ -660,7 +687,12 @@ export function registerTfvcTools(server: McpServer, provider: IConnectionProvid
               version: change.item?.version,
             }));
 
-            let fileContents: { path: string; content: string }[] | undefined;
+            let fileContents:
+              | Array<
+                  | { path: string; content: string }
+                  | { path: string; skipped: "binary" }
+                >
+              | undefined;
             if (includeFileContent && fileChanges.length > 0) {
               fileContents = [];
               for (const fc of fileChanges.slice(0, maxFiles)) {
@@ -683,15 +715,12 @@ export function registerTfvcTools(server: McpServer, provider: IConnectionProvid
                     for await (const chunk of stream) {
                       chunks.push(Buffer.from(chunk));
                     }
-                    const content = Buffer.concat(chunks).toString("utf-8");
-                    fileContents.push({
-                      path: fc.path,
-                      content:
-                        content.length > FILE_CONTENT_TRUNCATION_LIMIT
-                          ? content.substring(0, FILE_CONTENT_TRUNCATION_LIMIT) +
-                            "\n... [truncated, file too large]"
-                          : content,
-                    });
+                    const decoded = decodeFileContent(Buffer.concat(chunks));
+                    fileContents.push(
+                      decoded.binary
+                        ? { path: fc.path, skipped: "binary" }
+                        : { path: fc.path, content: decoded.content }
+                    );
                   }
                 } catch (err: unknown) {
                   fileContents.push({
@@ -732,7 +761,9 @@ export function registerTfvcTools(server: McpServer, provider: IConnectionProvid
             title: workItem.fields?.["System.Title"],
             state: workItem.fields?.["System.State"],
           },
-          totalChangesets: changesetResults.length,
+          totalLinkedChangesets: changesetIds.length,
+          returnedChangesets: changesetResults.length,
+          truncated: changesetIds.length > selectedIds.length,
           changesets: changesetResults,
         };
 

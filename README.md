@@ -97,7 +97,7 @@ Prompts are reusable, **advisory** workflows surfaced as slash commands in the A
 
 ### External resources
 
-Point `AZURE_DEVOPS_RESOURCE_DIR` at a folder and every `*.md` file in it is exposed as an MCP resource at `template://<filename>` (e.g. `release-checklist.md` → `template://release-checklist`). Use this to share team templates and checklists with the AI without baking them into the server.
+Point `AZURE_DEVOPS_RESOURCE_DIR` at a folder and every `*.md` file in it is exposed as an MCP resource at `template:<filename>` (e.g. `release-checklist.md` → `template:release-checklist`; the filename is URI-encoded, so spaces are safe). Use this to share team templates and checklists with the AI without baking them into the server.
 
 One template is wired to a prompt: dropping a **`risk-impact.md`** file in that folder enables the conditional `risk_impact_analysis` prompt, which fills the template from work-item evidence — optionally weighing an actual pending change via its `shelvesetName` argument. No template file → the prompt simply doesn't appear.
 

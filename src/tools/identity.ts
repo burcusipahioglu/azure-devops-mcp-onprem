@@ -10,7 +10,7 @@ export function registerIdentityTools(server: McpServer, provider: IConnectionPr
     "get_current_user",
     {
       description: "Get the identity of the authenticated Azure DevOps user (the PAT owner). Returns displayName, id, and uniqueName. Useful when you need the 'me' identity explicitly; most owner/author filter params also accept '@me' directly.",
-      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: true },
+      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: false },
       inputSchema: {},
     },
     () =>

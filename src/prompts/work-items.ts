@@ -35,7 +35,7 @@ export function registerRiskPrompt(
         "",
         "This task is ADVISORY and READ-ONLY. Use only read tools. Never modify any item or call a write tool.",
         "",
-        "1. Read the resource template://risk-impact — the team's standard template. Use its headings and structure as the exact shape of your output; do not add or rename headings.",
+        "1. Read the resource template:risk-impact — the team's standard template. Use its headings and structure as the exact shape of your output; do not add or rename headings.",
         `2. Gather evidence by reading work item #${workItemId} in full (description, comments, relations) and its change history.`,
       ];
 

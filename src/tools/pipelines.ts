@@ -58,7 +58,7 @@ export function registerPipelineTools(server: McpServer, provider: IConnectionPr
     "list_build_definitions",
     {
       description: "List build/pipeline definitions in the project",
-      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: true },
+      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: false },
       inputSchema: {
         name: z
           .string()
@@ -98,7 +98,7 @@ export function registerPipelineTools(server: McpServer, provider: IConnectionPr
     "queue_build",
     {
       description: "Queue (trigger) a build pipeline. WARNING: This is a WRITE operation that consumes agent time and may trigger downstream side effects (deploys, notifications). Show the user the definition ID, branch, and parameters before calling, and ask for confirmation. Tip: pass dryRun: true first to preview the exact payload before queueing.",
-      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
       inputSchema: {
         definitionId: z.number().describe("Build definition ID"),
         sourceBranch: z
@@ -157,7 +157,7 @@ export function registerPipelineTools(server: McpServer, provider: IConnectionPr
     "get_build",
     {
       description: "Get the status and details of a specific build",
-      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: true },
+      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: false },
       inputSchema: {
         buildId: z.number().describe("Build ID"),
       },
@@ -190,7 +190,7 @@ export function registerPipelineTools(server: McpServer, provider: IConnectionPr
     "list_builds",
     {
       description: "List recent builds with optional filters",
-      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: true },
+      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: false },
       inputSchema: {
         definitionId: z
           .number()
@@ -253,7 +253,7 @@ export function registerPipelineTools(server: McpServer, provider: IConnectionPr
     "list_releases",
     {
       description: "List releases with optional filters",
-      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: true },
+      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: false },
       inputSchema: {
         definitionId: z
           .number()

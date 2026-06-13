@@ -125,7 +125,7 @@ export function registerStatisticsTools(server: McpServer, provider: IConnection
     "get_work_item_statistics",
     {
       description: "Get work item counts grouped by Area Path. Useful for finding which areas have the most bugs, PBIs, or other work item types over a given time period. Supports pagination to retrieve all results beyond the 200-item WIQL limit.",
-      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: true },
+      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: false },
       inputSchema: {
         workItemTypes: z
           .array(z.string())

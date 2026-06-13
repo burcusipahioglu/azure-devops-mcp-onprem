@@ -66,7 +66,7 @@ export function registerTestManagementTools(server: McpServer, provider: IConnec
     "list_test_plans",
     {
       description: "List test plans in the project. Test plans organize test suites and test cases for quality assurance.",
-      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: true },
+      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: false },
       inputSchema: {
         filterActivePlans: z
           .boolean()
@@ -112,7 +112,7 @@ export function registerTestManagementTools(server: McpServer, provider: IConnec
     "get_test_plan",
     {
       description: "Get detailed information about a specific test plan",
-      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: true },
+      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: false },
       inputSchema: {
         planId: z.number().describe("Test plan ID"),
       },
@@ -148,7 +148,7 @@ export function registerTestManagementTools(server: McpServer, provider: IConnec
     "list_test_suites",
     {
       description: "List test suites within a test plan. Suites group related test cases together.",
-      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: true },
+      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: false },
       inputSchema: {
         planId: z.number().describe("Test plan ID"),
         asTreeView: z
@@ -187,7 +187,7 @@ export function registerTestManagementTools(server: McpServer, provider: IConnec
     "list_test_cases",
     {
       description: "List test cases within a test suite. Returns test case IDs, titles, configurations, and point assignments.",
-      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: true },
+      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: false },
       inputSchema: {
         planId: z.number().describe("Test plan ID"),
         suiteId: z.number().describe("Test suite ID"),
@@ -221,7 +221,7 @@ export function registerTestManagementTools(server: McpServer, provider: IConnec
     "list_test_runs",
     {
       description: "List test runs in the project. Test runs represent executions of test plans/suites and contain test results.",
-      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: true },
+      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: false },
       inputSchema: {
         planId: z
           .number()
@@ -285,7 +285,7 @@ export function registerTestManagementTools(server: McpServer, provider: IConnec
     "get_test_results",
     {
       description: "Get test results for a specific test run. Shows pass/fail status for each test case, with error messages and durations.",
-      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: true },
+      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: false },
       inputSchema: {
         runId: z.number().describe("Test run ID"),
         outcomes: z
@@ -341,7 +341,7 @@ export function registerTestManagementTools(server: McpServer, provider: IConnec
     {
       description:
         "Add existing Test Case work items to a test suite. A Test Case is a work item (create it with create_work_item, type 'Test Case'); this tool links those work items into a suite so they appear in the plan. WARNING: This is a WRITE operation. Confirm the plan, suite, and test case IDs with the user before calling. Tip: pass dryRun: true first to preview the exact payload before adding.",
-      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
       inputSchema: {
         planId: z.number().describe("Test plan ID the suite belongs to"),
         suiteId: z.number().describe("Test suite ID to add the test cases to"),
