@@ -54,7 +54,7 @@ Query work items, repositories, and pipelines in natural language — running lo
   <img src="docs/sdlc-ring.svg" alt="DevOps lifecycle coverage — Plan: Work Items · Code: Git, TFVC · Review: Pull Requests, Comments · Build & Release: Pipelines · Test: Test Plans · Document: Wiki" width="640">
 </p>
 
-One server across the whole development cycle — Plan, Code, Review, Build & Release, Test, Document — with your own templates exposed as MCP resources alongside the built-in tools and prompts. Every write passes a server-side governance layer: readonly mode, dry-run preview, rate limit, audit log, and per-role domain selection — see [Write Safety](#write-safety).
+One server across the whole development cycle — Plan, Code, Review, Build & Release, Test, Document — with your own templates exposed as MCP resources alongside the built-in tools and prompts. Every write passes a server-side governance layer — readonly mode, dry-run preview, rate limit, and audit log (see [Write Safety](#write-safety)); tools can also be scoped **per role** (see [Restrict tools per role](#restrict-tools-per-role) below).
 
 Full per-tool parameter reference: [Tool Reference ↓](#tool-reference)
 
