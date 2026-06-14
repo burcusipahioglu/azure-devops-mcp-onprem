@@ -13,7 +13,6 @@
 **Governed access to on-prem Azure DevOps (including TFVC) for AI agents and assistants, with typed tools, chainable workflows, and a server-side write-safety layer.**
 
 Query work items, repositories, and pipelines in natural language — running locally, no cloud proxy, no telemetry.
-**Full TFVC support.** **Profile-based secrets** — clean multi-instance setup without leaking PATs into `mcp.json`. Layered write safety.
 
 [Coverage](#coverage) · [TFVC](#tfvc-support) · [Profiles](#profile-based-secrets) · [Write Safety](#write-safety) · [Setup](#setup)
 
@@ -81,6 +80,21 @@ Disabled domains: git, wiki, test_plans
 
 ---
 
+## TFVC support
+
+**The reason this server exists.** Cloud Azure DevOps disabled new TFVC repos in February 2017, and Microsoft's official MCP server doesn't cover TFVC. If your team is still on Team Foundation Version Control, this is the only MCP server that exposes it natively to AI assistants.
+
+10 dedicated TFVC tools:
+
+- **Shelvesets** — `tfvc_list_shelvesets`, `tfvc_get_shelveset` (file changes + work item links), `tfvc_get_shelveset_file` (shelved, not-yet-checked-in file content — AI review before check-in, a workflow TFVC never had)
+- **Changesets** — `tfvc_list_changesets`, `tfvc_get_changeset` (incl. linked work items), `tfvc_get_changeset_changes`
+- **Browse, files & diffs** — `tfvc_browse`, `tfvc_get_file` (at any changeset version), `tfvc_get_file_diff` (changed hunks between two changesets)
+- **Work-item linkage** — `get_work_item_changesets` (all TFVC changesets touching a work item, with file contents)
+
+Filters accept `@me` where relevant. Requires Code (read & write) PAT scope.
+
+---
+
 ## Prompts & Resources
 
 Prompts are reusable, **advisory** workflows surfaced as slash commands in the AI client. Each one instructs the model to gather evidence with the read tools and ground every claim in concrete IDs — producing the report never calls a write tool. One exception by design: `review_pull_request` can afterwards publish its findings as file-anchored PR comments, but only when you explicitly ask, with every comment confirmed before posting. Prompts load on the **same domain axis** as tools, so disabling a domain hides its prompts.
@@ -105,21 +119,6 @@ The table lists 8; a 9th prompt, `risk_impact_analysis`, is conditional — it a
 Point `AZURE_DEVOPS_RESOURCE_DIR` at a folder and every `*.md` file in it is exposed as an MCP resource at `template:<filename>` (e.g. `release-checklist.md` → `template:release-checklist`; the filename is URI-encoded, so spaces are safe). Use this to share team templates and checklists with the AI without baking them into the server.
 
 One template is wired to a prompt: dropping a **`risk-impact.md`** file in that folder enables the conditional `risk_impact_analysis` prompt, which fills the template from work-item evidence — optionally weighing an actual pending change via its `shelvesetName` argument. No template file → the prompt simply doesn't appear.
-
----
-
-## TFVC support
-
-**The reason this server exists.** Cloud Azure DevOps disabled new TFVC repos in February 2017, and Microsoft's official MCP server doesn't cover TFVC. If your team is still on Team Foundation Version Control, this is the only MCP server that exposes it natively to AI assistants.
-
-10 dedicated TFVC tools:
-
-- **Shelvesets** — `tfvc_list_shelvesets`, `tfvc_get_shelveset` (file changes + work item links), `tfvc_get_shelveset_file` (shelved, not-yet-checked-in file content — AI review before check-in, a workflow TFVC never had)
-- **Changesets** — `tfvc_list_changesets`, `tfvc_get_changeset` (incl. linked work items), `tfvc_get_changeset_changes`
-- **Browse, files & diffs** — `tfvc_browse`, `tfvc_get_file` (at any changeset version), `tfvc_get_file_diff` (changed hunks between two changesets)
-- **Work-item linkage** — `get_work_item_changesets` (all TFVC changesets touching a work item, with file contents)
-
-Filters accept `@me` where relevant. Requires Code (read & write) PAT scope.
 
 ---
 
