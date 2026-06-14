@@ -19,7 +19,7 @@ Query work items, repositories, and pipelines in natural language — running lo
 </div>
 
 <p align="center">
-  <img src="docs/demo.gif" alt="Asking an AI assistant what changed in a TFVC changeset and resolving the linked bug — answered from on-prem Azure DevOps, with dry-run preview and audit logging on writes" width="720">
+  <img src="docs/demo.gif" alt="An AI assistant explains what a TFVC changeset changed — chaining changeset and work-item tools to report the changed files and the linked bug — then adds a lesson-learned note and resolves that bug, with dry-run preview and audit logging on writes" width="720">
 </p>
 
 ---
