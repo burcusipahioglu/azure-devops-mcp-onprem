@@ -16,6 +16,7 @@ interface StatisticsParams {
   states?: string[];
   areaPathPrefix?: string;
   areaPathContains?: string;
+  titleContains?: string;
   tags?: string[];
   iterationPath?: string;
 }
@@ -28,7 +29,7 @@ interface AreaCount {
 // --- Decomposed helpers for get_work_item_statistics ---
 
 function buildStatisticsWiql(params: StatisticsParams): string {
-  const { project, workItemTypes, days, states, areaPathPrefix, tags, iterationPath } = params;
+  const { project, workItemTypes, days, states, areaPathPrefix, titleContains, tags, iterationPath } = params;
 
   const typeFilter = workItemTypes
     .map((t) => `'${sanitizeWiqlValue(t)}'`)
@@ -42,6 +43,12 @@ function buildStatisticsWiql(params: StatisticsParams): string {
   }
   if (areaPathPrefix) {
     wiql += ` AND [System.AreaPath] UNDER '${sanitizeWiqlValue(areaPathPrefix)}'`;
+  }
+  if (titleContains) {
+    // CONTAINS is a substring match on the Title string field, so a value like
+    // "auth" also catches "authentication" / "oauth" (case-insensitive). It
+    // also needs no full-text index, unlike CONTAINS WORDS.
+    wiql += ` AND [System.Title] CONTAINS '${sanitizeWiqlValue(titleContains)}'`;
   }
   if (tags && tags.length > 0) {
     const tagConditions = tags
@@ -57,12 +64,25 @@ function buildStatisticsWiql(params: StatisticsParams): string {
   return wiql;
 }
 
-function groupByAreaPath(
+// YYYY-MM bucket from a System.CreatedDate value (the API hands back a Date;
+// tolerate an ISO string too).
+function toMonthBucket(value: unknown): string | null {
+  if (value instanceof Date) return value.toISOString().slice(0, 7);
+  if (typeof value === "string" && value.length >= 7) return value.slice(0, 7);
+  return null;
+}
+
+function groupItems(
   items: { fields?: Record<string, unknown> }[],
   groupByDepth: number,
   areaPathContains?: string
-): { countMap: Record<string, AreaCount>; totalProcessed: number } {
+): {
+  countMap: Record<string, AreaCount>;
+  timeline: { month: string; count: number }[];
+  totalProcessed: number;
+} {
   const countMap: Record<string, AreaCount> = {};
+  const monthMap: Record<string, number> = {};
   let totalProcessed = 0;
 
   for (const wi of items) {
@@ -86,10 +106,17 @@ function groupByAreaPath(
     countMap[groupedPath].byType[wiType] =
       (countMap[groupedPath].byType[wiType] || 0) + 1;
 
+    const month = toMonthBucket(wi.fields?.["System.CreatedDate"]);
+    if (month) monthMap[month] = (monthMap[month] || 0) + 1;
+
     totalProcessed++;
   }
 
-  return { countMap, totalProcessed };
+  const timeline = Object.entries(monthMap)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([month, count]) => ({ month, count }));
+
+  return { countMap, timeline, totalProcessed };
 }
 
 function buildNarrowingHints(
@@ -124,7 +151,7 @@ export function registerStatisticsTools(server: McpServer, provider: IConnection
   server.registerTool(
     "get_work_item_statistics",
     {
-      description: "Get work item counts grouped by Area Path. Useful for finding which areas have the most bugs, PBIs, or other work item types over a given time period. Supports pagination to retrieve all results beyond the 200-item WIQL limit.",
+      description: "Get work item counts grouped by Area Path, plus a monthly timeline. Useful for finding which areas have the most bugs, PBIs, or other types over a time period, and how the volume trends month to month. Use titleContains to scope a report to a topic. Supports pagination to retrieve all results beyond the 200-item WIQL limit.",
       annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: false },
       inputSchema: {
         workItemTypes: z
@@ -157,6 +184,12 @@ export function registerStatisticsTools(server: McpServer, provider: IConnection
           .describe(
             "Filter by keyword anywhere in Area Path. Useful when you don't know the exact path but know part of the area name."
           ),
+        titleContains: z
+          .string()
+          .optional()
+          .describe(
+            "Filter to items whose title contains this substring (case-insensitive). Uses WIQL CONTAINS (substring), so e.g. 'auth' also matches 'authentication' and 'oauth'. Use it to scope a report to a topic keyword."
+          ),
         groupByDepth: z
           .number()
           .optional()
@@ -183,7 +216,7 @@ export function registerStatisticsTools(server: McpServer, provider: IConnection
           .describe("Return only the top N areas by count"),
       },
     },
-    ({ workItemTypes, days, states, areaPathPrefix, areaPathContains, groupByDepth, tags, iterationPath, topAreas }, extra) =>
+    ({ workItemTypes, days, states, areaPathPrefix, areaPathContains, titleContains, groupByDepth, tags, iterationPath, topAreas }, extra) =>
       withErrorHandling(async () => {
         const { api, project } = await provider.getWorkItemContext();
 
@@ -193,6 +226,7 @@ export function registerStatisticsTools(server: McpServer, provider: IConnection
           days,
           states,
           areaPathPrefix,
+          titleContains,
           tags,
           iterationPath,
         });
@@ -210,7 +244,7 @@ export function registerStatisticsTools(server: McpServer, provider: IConnection
         ) {
           return jsonResponse({
             message: "No work items found matching the criteria.",
-            query: { workItemTypes, days, states, areaPathPrefix },
+            query: { workItemTypes, days, states, areaPathPrefix, titleContains },
           });
         }
 
@@ -224,13 +258,13 @@ export function registerStatisticsTools(server: McpServer, provider: IConnection
         const allItems = await batchGetWorkItems(
           api,
           allIds,
-          ["System.Id", "System.AreaPath", "System.WorkItemType"],
+          ["System.Id", "System.AreaPath", "System.WorkItemType", "System.CreatedDate"],
           project,
           undefined,
           (fetched, total) => report(fetched, total, `Fetched ${fetched}/${total} work items`)
         );
 
-        const { countMap, totalProcessed } = groupByAreaPath(
+        const { countMap, timeline, totalProcessed } = groupItems(
           allItems,
           groupByDepth,
           areaPathContains
@@ -262,12 +296,14 @@ export function registerStatisticsTools(server: McpServer, provider: IConnection
               states: states || "All",
               areaPathPrefix: areaPathPrefix || "All",
               areaPathContains: areaPathContains || "None",
+              titleContains: titleContains || "None",
               tags: tags || "None",
               iterationPath: iterationPath || "All",
             },
             groupByDepth,
           },
           topAreas: sortedAreas,
+          timeline,
         };
 
         if (hints.length > 0) {

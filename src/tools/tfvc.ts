@@ -454,51 +454,6 @@ export function registerTfvcTools(server: McpServer, provider: IConnectionProvid
   );
 
   server.registerTool(
-    "tfvc_list_branches",
-    {
-      description: "List TFVC items that are explicitly marked as branches (via 'Convert to Branch' in Visual Studio or `tf branch`). IMPORTANT: many TFVC projects use a folder-as-branch convention (e.g. $/Project/Main, $/Project/Dev) without marking folders as branches — those will NOT appear here. If this returns empty, the project likely uses unmarked folders; call `tfvc_browse` instead to see the actual folder structure.",
-      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: false },
-      inputSchema: {
-        includeChildren: z
-          .boolean()
-          .optional()
-          .default(false)
-          .describe("Include child branches"),
-        includeDeleted: z
-          .boolean()
-          .optional()
-          .default(false)
-          .describe("Include deleted branches"),
-      },
-    },
-    ({ includeChildren, includeDeleted }) =>
-      withErrorHandling(async () => {
-        const { api, project } = await provider.getTfvcContext();
-
-        const branches = await api.getBranches(
-          project,
-          undefined,
-          includeChildren,
-          includeDeleted
-        );
-
-        const result = (branches || []).map((branch) => ({
-          path: branch.path,
-          description: branch.description,
-          owner: branch.owner?.displayName,
-          createdDate: branch.createdDate,
-          children: branch.children?.map((child) => ({
-            path: child.path,
-            description: child.description,
-            createdDate: child.createdDate,
-          })),
-        }));
-
-        return jsonResponse(result);
-      })
-  );
-
-  server.registerTool(
     "tfvc_list_shelvesets",
     {
       description: "List TFVC shelvesets (pending changes stored on the server)",
@@ -662,57 +617,6 @@ export function registerTfvcTools(server: McpServer, provider: IConnectionProvid
           return textResponse(`[Binary file — content not shown: ${path}]`);
         }
         return textResponse(decoded.content);
-      })
-  );
-
-  server.registerTool(
-    "tfvc_list_labels",
-    {
-      description: "List TFVC labels in the project",
-      annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false, openWorldHint: false },
-      inputSchema: {
-        name: z
-          .string()
-          .optional()
-          .describe("Filter by label name (contains match)"),
-        owner: z
-          .string()
-          .optional()
-          .describe("Filter by owner display name. Pass '@me' to filter to the authenticated user."),
-        top: topParam(25),
-        skip: skipParam(),
-      },
-    },
-    ({ name, owner, top, skip }) =>
-      withErrorHandling(async () => {
-        const { api, project } = await provider.getTfvcContext();
-
-        const resolvedOwner = await resolveMe(owner, provider);
-        const requestData: Record<string, unknown> = {
-          includeLinks: false,
-          maxItemCount: 0,
-        };
-        if (name) requestData.name = name;
-        if (resolvedOwner) requestData.owner = resolvedOwner;
-
-        const labels = await api.getLabels(
-          requestData as Parameters<typeof api.getLabels>[0],
-          project,
-          top,
-          skip
-        );
-
-        const result = (labels || []).map((label) => ({
-          id: label.id,
-          name: label.name,
-          description: label.description,
-          labelScope: label.labelScope,
-          modifiedDate: label.modifiedDate,
-          owner: label.owner?.displayName,
-          url: label.url,
-        }));
-
-        return jsonResponse(result);
       })
   );
 

@@ -66,3 +66,70 @@ export function registerRiskPrompt(
     }
   );
 }
+
+// Registered when the work_items domain is enabled (see index.ts). Generic —
+// no project-specific terms; the caller supplies titleContains/area at call time.
+export function registerWorkItemPrompts(
+  server: McpServer,
+  _provider: IConnectionProvider
+): void {
+  server.registerPrompt(
+    "work_item_report",
+    {
+      title: "Work item report (area, timeline, themes)",
+      description:
+        "Read-only report over a work-item filter: counts by Area Path, a monthly timeline, and AI-grouped recurring themes from titles. Scope it with titleContains, area, workItemTypes, and days.",
+      argsSchema: {
+        titleContains: z
+          .string()
+          .optional()
+          .describe("Only items whose title contains this substring (case-insensitive), e.g. a topic keyword."),
+        area: z
+          .string()
+          .optional()
+          .describe("Area Path keyword to scope to (matched anywhere in the area path)."),
+        days: z.coerce
+          .number()
+          .optional()
+          .describe("Look back this many days (default 365)."),
+        workItemTypes: z
+          .string()
+          .optional()
+          .describe("Comma-separated work item types (default 'Bug'), e.g. 'Bug,Product Backlog Item'."),
+      },
+    },
+    ({ titleContains, area, days, workItemTypes }) => {
+      const lookback = days && days > 0 ? days : 365;
+      const types = workItemTypes
+        ? workItemTypes.split(",").map((t) => t.trim()).filter(Boolean)
+        : ["Bug"];
+
+      const text = [
+        `Produce a work item report${titleContains ? ` for items whose title contains "${titleContains}"` : ""}${area ? ` in area "${area}"` : ""}.`,
+        "",
+        "This task is ADVISORY and READ-ONLY. Use only read tools; never modify anything or call a write tool. Output markdown tables only — do NOT emit Mermaid or other chart code unless the user explicitly asks afterwards.",
+        "",
+        `1. Get the hard numbers with get_work_item_statistics: workItemTypes ${JSON.stringify(types)}, days ${lookback}${area ? `, areaPathContains "${area}"` : ""}${titleContains ? `, titleContains "${titleContains}"` : ""}. It returns counts grouped by Area Path (topAreas) and a monthly timeline.`,
+        `2. For recurring themes, call query_work_items with a WIQL matching the SAME filters (the work item types above, created within the last ${lookback} days${titleContains ? ", title containing the same keyword" : ""}${area ? ", same area" : ""}) and request fields ['System.Title', 'System.State', 'System.AreaPath']. Use the returned titles for clustering.`,
+        "",
+        "Then produce the report with these sections, grounded in the data above:",
+        "- Summary — total count, period, and the filters applied (from get_work_item_statistics summary).",
+        "- By area — a markdown table of the top areas: area path, count, per-type breakdown. Counts come ONLY from get_work_item_statistics.",
+        "- Monthly timeline — a markdown table of month and count from the statistics 'timeline' field; note any clear rise or fall.",
+        "- Recurring themes (ADVISORY) — group the query_work_items titles into recurring topics, with a count per theme and 1-2 example titles. Mark this section clearly as AI-grouped and advisory (not a deterministic count). State how many titles you grouped vs the total (e.g. \"themed 50 of 320\").",
+        "- Hotspots & focus — which area and theme dominate, with a concrete, grounded suggestion of where to focus.",
+        "",
+        'Grounding: every count in "By area" and "Monthly timeline" must come from get_work_item_statistics — never invent or estimate. Themes are advisory (your reading of titles) — label them so. If data is too thin for a section, write "evidence insufficient" rather than padding. Markdown tables only; no charts.',
+      ].join("\n");
+
+      return {
+        messages: [
+          {
+            role: "user",
+            content: { type: "text", text },
+          },
+        ],
+      };
+    }
+  );
+}

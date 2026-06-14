@@ -53,7 +53,7 @@ Query work items, repositories, and pipelines in natural language — running lo
   <img src="docs/sdlc-ring.svg" alt="DevOps lifecycle coverage — Plan: Work Items · Code: Git, TFVC · Review: Pull Requests, Comments · Build & Release: Pipelines · Test: Test Plans · Document: Wiki" width="640">
 </p>
 
-One server across the whole cycle — **48 tools** and **8 prompts** covering Work Items, Git, TFVC, Pipelines, Test Plans, and Wiki, plus your own templates as MCP resources. Every write passes a server-side governance layer: readonly mode, dry-run preview, rate limit, audit log, and per-role domain selection — see [Write Safety](#write-safety).
+One server across the whole cycle — **48 tools** and **9 prompts** covering Work Items, Git, TFVC, Pipelines, Test Plans, and Wiki, plus your own templates as MCP resources. Every write passes a server-side governance layer: readonly mode, dry-run preview, rate limit, audit log, and per-role domain selection — see [Write Safety](#write-safety).
 
 Full per-tool parameter reference: [Tool Reference ↓](#tool-reference)
 
@@ -92,6 +92,7 @@ Prompts are reusable, **advisory** workflows surfaced as slash commands in the A
 | `git` | `analyze_commit_range` | Release-notes style changelog between two branches |
 | `tfvc` | `lessons_learned_tfvc` | Root cause / detection / prevention report for a resolved bug, from its history and linked TFVC changesets |
 | `tfvc` | `changeset_summary` | Purpose, files, and scope/risk of a TFVC changeset |
+| `work_items` | `work_item_report` | Counts by area + monthly timeline + AI-grouped recurring themes for a work-item filter (`titleContains`/`area`/`workItemTypes`/`days`) |
 
 `lessons_learned` is split per backend (Git vs. TFVC) so each variant names its own read tools; both need `work_items` enabled to read the bug itself.
 
@@ -107,13 +108,11 @@ One template is wired to a prompt: dropping a **`risk-impact.md`** file in that 
 
 **The reason this server exists.** Cloud Azure DevOps disabled new TFVC repos in February 2017, and Microsoft's official MCP server doesn't cover TFVC. If your team is still on Team Foundation Version Control, this is the only MCP server that exposes it natively to AI assistants.
 
-11 dedicated TFVC tools:
+10 dedicated TFVC tools:
 
 - **Shelvesets** — `tfvc_list_shelvesets`, `tfvc_get_shelveset` (file changes + work item links), `tfvc_get_shelveset_file` (shelved, not-yet-checked-in file content — AI review before check-in, a workflow TFVC never had)
 - **Changesets** — `tfvc_list_changesets`, `tfvc_get_changeset` (incl. linked work items), `tfvc_get_changeset_changes`
-- **Browse & files** — `tfvc_browse`, `tfvc_get_file` (at any changeset version)
-- **Labels** — `tfvc_list_labels`
-- **Branches** — `tfvc_list_branches` (with children, including deleted)
+- **Browse, files & diffs** — `tfvc_browse`, `tfvc_get_file` (at any changeset version), `tfvc_get_file_diff` (changed hunks between two changesets)
 - **Work-item linkage** — `get_work_item_changesets` (all TFVC changesets touching a work item, with file contents)
 
 Filters accept `@me` where relevant. Requires Code (read & write) PAT scope.
@@ -381,15 +380,16 @@ Restart the client. All 48 tools appear in the tool picker. Server name is auto-
 | `add_work_item_comment` | Add a comment | `workItemId`, `text` |
 | `link_work_items` | Link two work items | `sourceId`, `targetId`, `linkType` |
 | `get_work_item_history` | Full change audit trail (who/what/when with old/new values) | `workItemId`, `top`, `skip` |
-| `get_work_item_statistics` | Work item counts by area path (handles 20K+ items) | `workItemTypes`, `days`, `states`, `areaPathPrefix`, `areaPathContains`, `tags`, `iterationPath`, `groupByDepth`, `topAreas` |
+| `get_work_item_statistics` | Work item counts by area path + monthly timeline (handles 20K+ items) | `workItemTypes`, `days`, `states`, `areaPathPrefix`, `areaPathContains`, `titleContains`, `tags`, `iterationPath`, `groupByDepth`, `topAreas` |
 
-### Git (8 tools)
+### Git (9 tools)
 
 | Tool | Description | Key Parameters |
 |------|-------------|----------------|
 | `list_repositories` | List all Git repos in project | — |
 | `list_branches` | List branches in a repo | `repositoryId` |
 | `get_file_content` | Get file content from repo | `repositoryId`, `path`, `branch` |
+| `get_file_diff` | Unified diff of one file between two branches/commits (changed hunks only) | `repositoryId`, `path`, `baseVersion`, `targetVersion`, `contextLines` |
 | `list_pull_requests` | List PRs; omit `repositoryId` for project-wide, filter by `reviewer` (accepts `@me`) | `repositoryId`, `reviewer`, `status`, `top` |
 | `get_pull_request` | Get PR details | `repositoryId`, `pullRequestId` |
 | `get_pull_request_comments` | List PR comment threads (file-anchored + general) | `repositoryId`, `pullRequestId`, `includeSystem` |
@@ -405,20 +405,19 @@ Restart the client. All 48 tools appear in the tool picker. Server name is auto-
 | `compare_branches` | Branch diff (ahead/behind + changed files) | `repositoryId`, `baseBranch`, `targetBranch` |
 | `get_work_item_commits` | Git commits & PRs linked to a work item | `workItemId`, `includeChanges` |
 
-### TFVC (11 tools)
+### TFVC (10 tools)
 
 | Tool | Description | Key Parameters |
 |------|-------------|----------------|
 | `tfvc_browse` | Browse files/folders at a TFVC path | `scopePath`, `recursion` |
 | `tfvc_get_file` | Get file content | `path`, `version` (changeset number) |
+| `tfvc_get_file_diff` | Unified diff of one TFVC file between two changesets (changed hunks only) | `path`, `baseVersion`, `targetVersion`, `contextLines` |
 | `tfvc_get_changeset` | Get changeset details | `id`, `includeWorkItems`, `includeDetails` |
 | `tfvc_list_changesets` | List changesets with filters | `itemPath`, `author` (accepts `@me`), `fromDate`, `toDate`, `top` |
 | `tfvc_get_changeset_changes` | List file changes in a changeset | `changesetId`, `top` |
-| `tfvc_list_branches` | List TFVC branches | `includeChildren`, `includeDeleted` |
-| `tfvc_list_shelvesets` | List shelvesets (sorted newest-first) | `owner` (accepts `@me`), `top` |
+| `tfvc_list_shelvesets` | List shelvesets; pass `name`+`owner` to find one in a single call | `name`, `owner` (accepts `@me`), `top` |
 | `tfvc_get_shelveset` | Get shelveset details + changes | `shelvesetId`, `includeWorkItems` |
 | `tfvc_get_shelveset_file` | Get shelved (pending) content of one file in a shelveset | `shelvesetId`, `path`, `maxBytes` |
-| `tfvc_list_labels` | List TFVC labels | `name`, `owner` (accepts `@me`), `top` |
 | `get_work_item_changesets` | All TFVC changesets linked to a work item (with file changes) | `workItemId`, `includeFileContent`, `maxFiles` |
 
 ### Pipelines (5 tools)
@@ -469,7 +468,6 @@ Several filter parameters accept the magic token `@me` — the server resolves i
 |------|-----------|
 | `tfvc_list_shelvesets` | `owner` |
 | `tfvc_list_changesets` | `author` |
-| `tfvc_list_labels` | `owner` |
 | `list_commits` | `author` |
 | `list_pull_requests` | `reviewer` |
 | `create_work_item` | `assignedTo` |

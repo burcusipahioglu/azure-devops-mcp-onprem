@@ -48,7 +48,7 @@ import { registerExternalResources } from "./resources/external.js";
 import { auditSessionStart } from "./utils/audit.js";
 import { isReadonlyMode } from "./utils/write-mode.js";
 import { configuredWritesPerMin } from "./utils/rate-limit.js";
-import { registerRiskPrompt } from "./prompts/work-items.js";
+import { registerRiskPrompt, registerWorkItemPrompts } from "./prompts/work-items.js";
 import { registerGitPrompts } from "./prompts/git.js";
 import { registerTfvcPrompts } from "./prompts/tfvc.js";
 
@@ -106,6 +106,7 @@ const loadedResources = registerExternalResources(server);
 type PromptRegister = (server: McpServer, provider: AzureDevOpsConnectionProvider) => void;
 
 const promptModules: Partial<Record<DomainName, PromptRegister[]>> = {
+  work_items: [registerWorkItemPrompts],
   git: [registerGitPrompts],
   tfvc: [registerTfvcPrompts],
 };
