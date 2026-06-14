@@ -10,16 +10,18 @@
 [![Tools](https://img.shields.io/badge/Tools-48-green)](https://github.com/burcusipahioglu/azure-devops-mcp-onprem#tool-reference)
 [![npm version](https://img.shields.io/npm/v/@burcusg/azure-devops-mcp-onprem.svg)](https://www.npmjs.com/package/@burcusg/azure-devops-mcp-onprem)
 
-**Bring on-premises Azure DevOps Server to your AI assistant.**
+**Governed access to on-prem Azure DevOps (including TFVC) for AI agents and assistants, with typed tools, chainable workflows, and a server-side write-safety layer.**
 
 Query work items, repositories, and pipelines in natural language — running locally, no cloud proxy, no telemetry.
 **Full TFVC support.** **Profile-based secrets** — clean multi-instance setup without leaking PATs into `mcp.json`. Layered write safety.
 
-[Tools](#tools) · [TFVC](#tfvc-support) · [Profiles](#profile-based-secrets) · [Write Safety](#write-safety) · [Setup](#setup)
+[Coverage](#coverage) · [TFVC](#tfvc-support) · [Profiles](#profile-based-secrets) · [Write Safety](#write-safety) · [Setup](#setup)
 
 </div>
 
-<!-- TODO: hero demo GIF -->
+<p align="center">
+  <img src="docs/demo.gif" alt="Asking an AI assistant what changed in a TFVC changeset and resolving the linked bug — answered from on-prem Azure DevOps, with dry-run preview and audit logging on writes" width="720">
+</p>
 
 ---
 
@@ -27,15 +29,15 @@ Query work items, repositories, and pipelines in natural language — running lo
 
 | | |
 |---|---|
+| **TFVC native** | 10 dedicated tools — shelvesets (incl. shelved file content), changesets, diffs, work-item linkage. The reason this server exists. |
+| **Write safety** | 6 layers — MCP annotations · confirmation directive · readonly kill switch · rate limit · dry-run on every write · audit log |
+| **Local / on-prem only** | PAT auth, no cloud proxy, no third-party calls, no telemetry |
 | **48 tools / 6 domains** | Work Items · Git · **TFVC** · Pipelines · Wiki · Test Plans |
-| **TFVC native** | 11 dedicated tools — shelvesets (incl. shelved file content), changesets, labels, branches. The reason this server exists. |
+| **Typed results** | `outputSchema` + `structuredContent` on the 8 most-chained read tools — schema-validated results an agent can chain into the next tool without parsing prose |
+| **`@me` token** | `owner` / `author` / `reviewer` / `assignedTo` accept `@me` — resolved per tenant, stateless for multi-agent setups |
 | **PR review flow** | `/review_pull_request` → structured advisory review → on request, published to the PR as file-anchored comments, each one confirmed first |
 | **Profile-based secrets** | `AZURE_DEVOPS_PROFILE=name` → gitignored `.env.<name>`; no PAT in cloud-synced `mcp.json`. Multi-instance is a natural byproduct. |
-| **Write safety** | 6 layers — MCP annotations · confirmation directive · readonly kill switch · rate limit · dry-run on every write · audit log |
 | **AI clients** | Claude (Code/Desktop), GitHub Copilot, Cursor, Visual Studio Code — any MCP-compatible client |
-| **Local only** | PAT auth, no cloud proxy, no third-party calls, no telemetry |
-| **`@me` token** | `owner` / `author` / `reviewer` / `assignedTo` accept `@me` — resolved per tenant, stateless for multi-agent setups |
-| **Typed results** | `outputSchema` + `structuredContent` on the 8 most-chained read tools — schema-validated, machine-parseable results |
 
 ### Example questions
 
@@ -47,7 +49,7 @@ Query work items, repositories, and pipelines in natural language — running lo
 
 ---
 
-## Tools
+## Coverage
 
 <p align="center">
   <img src="docs/sdlc-ring.svg" alt="DevOps lifecycle coverage — Plan: Work Items · Code: Git, TFVC · Review: Pull Requests, Comments · Build & Release: Pipelines · Test: Test Plans · Document: Wiki" width="640">
@@ -95,6 +97,8 @@ Prompts are reusable, **advisory** workflows surfaced as slash commands in the A
 | `work_items` | `work_item_report` | Counts by area + monthly timeline + AI-grouped recurring themes for a work-item filter (`titleContains`/`area`/`workItemTypes`/`days`) |
 
 `lessons_learned` is split per backend (Git vs. TFVC) so each variant names its own read tools; both need `work_items` enabled to read the bug itself.
+
+The table lists 8; a 9th prompt, `risk_impact_analysis`, is conditional — it appears only when a `risk-impact.md` template is present (see [External resources](#external-resources) below).
 
 ### External resources
 
@@ -364,7 +368,7 @@ Restart the client. All 48 tools appear in the tool picker. Server name is auto-
 
 ## Tool Reference
 
-**Typed results (first wave):** `query_work_items`, `list_pull_requests`, `get_pull_request`, `get_build`, `list_builds`, `tfvc_get_changeset`, `tfvc_list_changesets`, `list_test_runs` declare an MCP `outputSchema` and return `structuredContent` alongside the usual JSON text (text shape unchanged — existing clients see no difference).
+**Typed results (first wave):** `query_work_items`, `list_pull_requests`, `get_pull_request`, `get_build`, `list_builds`, `tfvc_get_changeset`, `tfvc_list_changesets`, `list_test_runs` declare an MCP `outputSchema` and return `structuredContent` alongside the usual JSON text (text shape unchanged — existing clients see no difference). An agent can feed one tool's `structuredContent` straight into the next without parsing prose.
 
 **Dry-run:** every write tool also accepts `dryRun: true` (not repeated in the tables below).
 
