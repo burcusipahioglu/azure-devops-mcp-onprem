@@ -6,11 +6,15 @@ import {
   CommentThreadStatus,
   CommentType,
 } from "azure-devops-node-api/interfaces/GitInterfaces.js";
+import {
+  JsonPatchOperation,
+  Operation,
+} from "azure-devops-node-api/interfaces/common/VSSInterfaces.js";
 import type { IConnectionProvider } from "../connection/provider.js";
 import { withErrorHandling, jsonResponse, textResponse, dryRunResponse, structuredResponse, toIso } from "../utils/tool-response.js";
 import { topParam, dryRunParam } from "../utils/schemas.js";
 import { withAudit } from "../utils/audit.js";
-import { resolveMeId } from "../utils/me-resolver.js";
+import { resolveMeId, resolveReviewerIds } from "../utils/me-resolver.js";
 import { decodeFileContent } from "../utils/file-content.js";
 import { computeUnifiedDiff } from "../utils/diff.js";
 import { FILE_DIFF_TRUNCATION_LIMIT, DIFF_MAX_LINES } from "../constants.js";
@@ -68,6 +72,64 @@ const getPullRequestOutput = {
   labels: z.array(z.string().optional()).optional(),
   url: z.string().optional(),
 };
+
+// Link work items to a freshly-created PR. The PR create API's `workItemRefs`
+// field is READ-ONLY — setting it on create is silently ignored and no link is
+// made. The blessed path is an ArtifactLink relation on each work item pointing
+// at the PR's vstfs artifact URI. Returns which ids linked and which failed so
+// the tool response never claims a link that didn't happen.
+async function linkWorkItemsToPr(
+  provider: IConnectionProvider,
+  pr: {
+    pullRequestId?: number;
+    repository?: { id?: string; project?: { id?: string } };
+  },
+  workItemIds: number[]
+): Promise<{ linked: number[]; failed: Array<{ id: number; reason: string }> }> {
+  const projectId = pr.repository?.project?.id;
+  const repoId = pr.repository?.id;
+  const prId = pr.pullRequestId;
+
+  if (!projectId || !repoId || prId == null) {
+    return {
+      linked: [],
+      failed: workItemIds.map((id) => ({
+        id,
+        reason:
+          "PR response missing repository/project/pullRequestId needed to build the artifact link",
+      })),
+    };
+  }
+
+  // vstfs artifact URI — the slashes between the three ids must be encoded.
+  const artifactUrl = `vstfs:///Git/PullRequestId/${projectId}%2F${repoId}%2F${prId}`;
+  const { api, project } = await provider.getWorkItemContext();
+
+  const linked: number[] = [];
+  const failed: Array<{ id: number; reason: string }> = [];
+
+  for (const id of workItemIds) {
+    const document: JsonPatchOperation[] = [
+      {
+        op: Operation.Add,
+        path: "/relations/-",
+        value: {
+          rel: "ArtifactLink",
+          url: artifactUrl,
+          attributes: { name: "Pull Request" },
+        },
+      },
+    ];
+    try {
+      await api.updateWorkItem(null, document, id, project);
+      linked.push(id);
+    } catch (e) {
+      failed.push({ id, reason: e instanceof Error ? e.message : String(e) });
+    }
+  }
+
+  return { linked, failed };
+}
 
 export function registerGitTools(server: McpServer, provider: IConnectionProvider): void {
   server.registerTool(
@@ -581,7 +643,7 @@ export function registerGitTools(server: McpServer, provider: IConnectionProvide
   server.registerTool(
     "create_pull_request",
     {
-      description: "Create a new pull request. WARNING: This is a WRITE operation that notifies reviewers and creates a record visible to the team. Show the user the repository, title, source/target branches, and reviewers before calling, and ask for confirmation. Tip: pass dryRun: true first to preview the exact payload before posting.",
+      description: "Create a new pull request. Defaults to a DRAFT PR (no reviewer notifications) — pass isDraft: false to open a ready PR. Optionally link work items and it guards against opening a duplicate PR for the same source→target. WARNING: This is a WRITE operation that creates a record visible to the team (and notifies reviewers when not a draft). Show the user the repository, title, source/target branches, reviewers, and linked work items before calling, and ask for confirmation. Tip: pass dryRun: true first to preview the exact payload before posting.",
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
       inputSchema: {
         repositoryId: z.string().describe("Repository name or ID"),
@@ -603,13 +665,22 @@ export function registerGitTools(server: McpServer, provider: IConnectionProvide
         reviewers: z
           .array(z.string())
           .optional()
-          .describe("Array of reviewer unique names or IDs"),
+          .describe("Reviewers as display names, sign-in emails/UPNs, '@me', or identity GUIDs — each is resolved to an identity before the PR is created; an unresolvable reviewer fails the call."),
+        workItemIds: z
+          .array(z.number())
+          .optional()
+          .describe("Work item IDs to link to the PR (e.g. the item(s) this change resolves)"),
+        isDraft: z
+          .boolean()
+          .optional()
+          .default(true)
+          .describe("Create as a draft PR — no reviewer notifications, not ready to merge. Defaults to true so agent-opened PRs start as drafts behind a human gate. Pass false to open a ready-for-review PR."),
         dryRun: dryRunParam,
       },
     },
     (input) =>
       withAudit(provider, "create_pull_request", input, () => withErrorHandling(async () => {
-        const { repositoryId, title, description, sourceBranch, targetBranch, reviewers, dryRun } = input;
+        const { repositoryId, title, description, sourceBranch, targetBranch, reviewers, workItemIds, isDraft, dryRun } = input;
         const { api, project } = await provider.getGitContext();
 
         const normalize = (branch: string) =>
@@ -617,22 +688,79 @@ export function registerGitTools(server: McpServer, provider: IConnectionProvide
             ? branch
             : `refs/heads/${branch}`;
 
+        const sourceRefName = normalize(sourceBranch);
+        const targetRefName = normalize(targetBranch);
+
+        // Browser-clickable PR link (repository.webUrl + /pullrequest/{id}),
+        // falling back to the REST url if webUrl is unavailable.
+        const prWebUrl = (pr: {
+          repository?: { webUrl?: string };
+          pullRequestId?: number;
+          url?: string;
+        }) =>
+          pr.repository?.webUrl
+            ? `${pr.repository.webUrl}/pullrequest/${pr.pullRequestId}`
+            : pr.url;
+
         const prToCreate: Record<string, unknown> = {
           title,
           description: description || "",
-          sourceRefName: normalize(sourceBranch),
-          targetRefName: normalize(targetBranch),
+          sourceRefName,
+          targetRefName,
+          isDraft,
         };
 
+        // Reviewers are resolved before both the dryRun preview and the create
+        // so a preview validates them too and surfaces resolution errors early.
+        // NOTE: work items are NOT added here — `workItemRefs` is read-only on
+        // create; they are linked via ArtifactLink relations after the PR exists.
         if (reviewers && reviewers.length > 0) {
-          prToCreate.reviewers = reviewers.map((r) => ({ id: r }));
+          const reviewerIds = await resolveReviewerIds(reviewers, provider);
+          prToCreate.reviewers = reviewerIds.map((id) => ({ id }));
         }
 
+        // dryRun previews the exact payload — return it BEFORE the duplicate
+        // guard so an existing PR never masks the preview the caller asked for.
         if (dryRun) {
           return dryRunResponse({
             action: "WOULD_CREATE_PULL_REQUEST",
-            wouldBe: { project, repositoryId, payload: prToCreate },
-            notes: "No PR created, no reviewers notified. Re-call with dryRun omitted or false to post.",
+            wouldBe: {
+              project,
+              repositoryId,
+              payload: prToCreate,
+              wouldLinkWorkItems: workItemIds ?? [],
+            },
+            notes: isDraft
+              ? "No PR created. Would open as a DRAFT (no reviewer notifications). Re-call with dryRun omitted or false to post."
+              : "No PR created, no reviewers notified yet. Would open as READY (reviewers notified on create). Re-call with dryRun omitted or false to post.",
+          });
+        }
+
+        // Duplicate guard — an agent re-run must not spam a second PR for the
+        // same source→target. If an active one already exists, return it and be
+        // explicit that this call's reviewers/work-items/isDraft were NOT applied.
+        const existing = await api.getPullRequests(
+          repositoryId,
+          { status: PullRequestStatus.Active, sourceRefName, targetRefName },
+          project
+        );
+        if (existing && existing.length > 0) {
+          const pr = existing[0];
+          return jsonResponse({
+            alreadyExists: true,
+            pullRequestId: pr.pullRequestId,
+            title: pr.title,
+            status: pr.status,
+            isDraft: pr.isDraft,
+            url: prWebUrl(pr),
+            sourceBranch: pr.sourceRefName,
+            targetBranch: pr.targetRefName,
+            requestedButNotApplied: {
+              reviewers: reviewers ?? [],
+              workItemIds: workItemIds ?? [],
+              isDraft,
+            },
+            note: "An active PR already exists for this source→target — returned it instead of creating a duplicate. Any reviewers, work-item links, or isDraft change requested in this call were NOT applied to it; update the existing PR directly if needed.",
           });
         }
 
@@ -642,13 +770,27 @@ export function registerGitTools(server: McpServer, provider: IConnectionProvide
           project
         );
 
+        // Link work items now that the PR exists (see linkWorkItemsToPr).
+        let linkedWorkItems: number[] = [];
+        let workItemLinkFailures: Array<{ id: number; reason: string }> = [];
+        if (workItemIds && workItemIds.length > 0) {
+          const result = await linkWorkItemsToPr(provider, pr, workItemIds);
+          linkedWorkItems = result.linked;
+          workItemLinkFailures = result.failed;
+        }
+
         return jsonResponse({
           pullRequestId: pr.pullRequestId,
           title: pr.title,
           status: pr.status,
-          url: pr.url,
+          isDraft: pr.isDraft,
+          url: prWebUrl(pr),
           sourceBranch: pr.sourceRefName,
           targetBranch: pr.targetRefName,
+          linkedWorkItems,
+          ...(workItemLinkFailures.length > 0
+            ? { workItemLinkFailures }
+            : {}),
         });
       }))
   );
